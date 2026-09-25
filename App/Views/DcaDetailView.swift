@@ -107,7 +107,12 @@ struct DcaDetailView: View {
                 ForEach(allChannels) { channel in
                     let isMember = isMember(channel)
                     Button {
-                        appModel.toggleChannelDcaMembership(channel.id, dcaId: dcaId)
+                        // Button 的 action 也是 @escaping 闭包，不继承 MainActor 隔离；
+                        // toggleChannelDcaMembership 会改写 channels[].dcaMask（UI 状态），
+                        // 必须留在 MainActor 上，所以在调用处显式跳一次。
+                        Task { @MainActor in
+                            appModel.toggleChannelDcaMembership(channel.id, dcaId: dcaId)
+                        }
                     } label: {
                         HStack {
                             Text(String(format: "%02d", channel.id))
