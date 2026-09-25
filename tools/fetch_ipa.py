@@ -71,14 +71,33 @@ def api(path, token, raw=False):
     return data if raw else json.loads(data.decode("utf-8"))
 
 
-def latest_run(repo, token, branch=None):
+def latest_run(repo, token, branch=None, wait_first=0):
+    """
+    取最新一次运行。
+
+    注意：push 之后 GitHub 需要几秒才把 run 登记进来，这期间查询返回空列表。
+    若在这里直接报错退出，「推送完立刻下载」的用法就必然失败 —— 所以按
+    wait_first 秒轮询等待首次出现。
+    """
     q = "/repos/%s/actions/runs?per_page=10" % repo
     if branch:
         q += "&branch=" + branch
-    runs = api(q, token).get("workflow_runs", [])
-    if not runs:
-        sys.exit("该仓库还没有任何 Actions 运行记录 —— 确认 workflow 已推送且至少触发过一次。")
-    return runs[0]
+
+    t0 = time.time()
+    announced = False
+    while True:
+        runs = api(q, token).get("workflow_runs", [])
+        if runs:
+            return runs[0]
+        if time.time() - t0 >= wait_first:
+            break
+        if not announced:
+            print("  还没有运行记录（推送后 GitHub 需数秒登记），等待中 ...")
+            announced = True
+        time.sleep(5)
+
+    sys.exit("该仓库还没有任何 Actions 运行记录 —— 确认 workflow 已推送且至少触发过一次，\n"
+             "若是刚推送完，加 --wait 让它先等一会儿再查。")
 
 
 def show_status(run):
@@ -186,7 +205,7 @@ def main():
     print("仓库: %s" % args.repo)
     print("=" * 60)
 
-    run = latest_run(args.repo, args.token)
+    run = latest_run(args.repo, args.token, wait_first=120 if args.wait else 0)
     print("\n最新一次运行:")
     status, conclusion = show_status(run)
 

@@ -155,6 +155,7 @@ A20000060000000000000010 /* ChannelsView.swift */ = {isa = PBXFileReference; las
 			);
 			mainGroup = A50000010000000000000010;
 			packageReferences = (
+				AA0000010000000000000010 /* XCLocalSwiftPackageReference "." */,
 			);
 			productRefGroup = A50000090000000000000010 /* Products */;
 			projectDirPath = "";
@@ -408,9 +409,17 @@ A20000060000000000000010 /* ChannelsView.swift */ = {isa = PBXFileReference; las
 		};
 /* End XCConfigurationList section */
 
+/* Begin XCLocalSwiftPackageReference section */
+		AA0000010000000000000010 /* XCLocalSwiftPackageReference "." */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ".";
+		};
+/* End XCLocalSwiftPackageReference section */
+
 /* Begin XCSwiftPackageProductDependency section */
 		A30000010000000000000010 /* X32RemoteCore */ = {
 			isa = XCSwiftPackageProductDependency;
+			package = AA0000010000000000000010 /* XCLocalSwiftPackageReference "." */;
 			productName = X32RemoteCore;
 		};
 /* End XCSwiftPackageProductDependency section */
