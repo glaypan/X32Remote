@@ -352,7 +352,6 @@ final class AppModel {
         }
     }
 
-    @MainActor
     func setBusSendLevel(_ channelId: Int, bus: Int, level: Float) {
         client?.send(OscMessage(address: OscAddresses.busSend(channelId, bus), args: [.float(level)]))
     }
@@ -405,7 +404,6 @@ final class AppModel {
         client?.send(OscMessage(address: OscAddresses.fxMute(fxId), args: [.int(isMuted ? 0 : 1)]))
     }
 
-    @MainActor
     func setFxParam(_ fxId: Int, param: String, value: Double) {
         guard let paramNum = Int(param) else { return }
         client?.send(OscMessage(address: OscAddresses.fxParam(fxId, paramNum), args: [.float(Float(value))]))
@@ -436,12 +434,10 @@ final class AppModel {
 
     // MARK: - EQ Send
 
-    @MainActor
     func setEqOn(_ channelId: Int, on: Bool) {
         client?.send(OscMessage(address: OscAddresses.eqOn(channelId), args: [.int(on ? 1 : 0)]))
     }
 
-    @MainActor
     func setEqBand(_ channelId: Int, band: Int, field: String, value: Double) {
         let addr: String
         switch field {
@@ -456,29 +452,24 @@ final class AppModel {
 
     // MARK: - Low Cut Send
 
-    @MainActor
     func setLowCutOn(_ channelId: Int, on: Bool) {
         client?.send(OscMessage(address: OscAddresses.lowCutOn(channelId), args: [.int(on ? 1 : 0)]))
     }
 
-    @MainActor
     func setLowCutFreq(_ channelId: Int, freq: Double) {
         client?.send(OscMessage(address: OscAddresses.lowCutFreq(channelId), args: [.float(Float(freq))]))
     }
 
-    @MainActor
     func setLowCutSlope(_ channelId: Int, slope: Int) {
         client?.send(OscMessage(address: OscAddresses.lowCutSlope(channelId), args: [.int(Int32(slope))]))
     }
 
     // MARK: - Compressor Send
 
-    @MainActor
     func setCompOn(_ channelId: Int, on: Bool) {
         client?.send(OscMessage(address: OscAddresses.compOn(channelId), args: [.int(on ? 1 : 0)]))
     }
 
-    @MainActor
     func setCompParam(_ channelId: Int, param: String, value: Double) {
         let addr: String
         switch param {

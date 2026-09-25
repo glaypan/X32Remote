@@ -34,11 +34,11 @@ struct ChannelsView: View {
                 label: channel.label,
                 level: Binding(
                     get: { appModel.channels.first(where: { $0.id == channelId })?.level ?? 0 },
-                    set: { Task { await appModel.setChannelLevel(channelId, level: $0) } }
+                    set: { v in Task { await appModel.setChannelLevel(channelId, level: v) } }
                 ),
                 isMuted: Binding(
                     get: { appModel.channels.first(where: { $0.id == channelId })?.isMuted ?? false },
-                    set: { Task { await appModel.toggleChannelMute(channelId, isMuted: $0) } }
+                    set: { v in Task { await appModel.toggleChannelMute(channelId, isMuted: v) } }
                 )
             )
             .padding(.leading, 4)

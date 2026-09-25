@@ -60,6 +60,20 @@ def call(script, args, token):
     return r.returncode
 
 
+def head_sha():
+    """本地当前提交。用于精确匹配本次推送触发的运行 —— 否则会拿到上一次的旧结果。"""
+    try:
+        r = subprocess.run(["git", "rev-parse", "HEAD"],
+                           cwd=os.path.dirname(HERE),
+                           capture_output=True, text=True, encoding="utf-8",
+                           errors="replace")
+        if r.returncode == 0:
+            return (r.stdout or "").strip()
+    except Exception:
+        pass
+    return ""
+
+
 def main():
     ap = argparse.ArgumentParser(description="iOS 一条命令完成构建与下载")
     ap.add_argument("--repo", default="X32Remote", help="仓库名（默认 X32Remote）")
@@ -96,8 +110,14 @@ def main():
         print("已跳过推送。")
 
     step(2 if not args.skip_push else 1, total, "等待云端编译并下载 IPA")
-    print("（首次构建约 4~6 分钟，脚本会一直轮询到结束）")
-    rc = call("fetch_ipa.py", ["--repo", full, "--token", args.token, "--wait"], args.token)
+    sha = head_sha()
+    fa = ["--repo", full, "--token", args.token, "--wait"]
+    if sha:
+        fa += ["--expect-sha", sha]
+        print("等待提交 %s 对应的构建（约 4~6 分钟，脚本会轮询到结束）..." % sha[:8])
+    else:
+        print("（首次构建约 4~6 分钟，脚本会一直轮询到结束）")
+    rc = call("fetch_ipa.py", fa, args.token)
     if rc != 0:
         print("\n下载未成功。可以先用下面这条看状态：")
         print("  python ios_build.py --skip-push --status")

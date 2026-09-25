@@ -60,7 +60,7 @@ struct ChannelDetailView: View {
                     Slider(
                         value: Binding(
                             get: { ch.level },
-                            set: { Task { await appModel.setChannelLevel(channelId, level: $0) } }
+                            set: { v in Task { await appModel.setChannelLevel(channelId, level: v) } }
                         ),
                         in: 0...1
                     )
@@ -76,7 +76,7 @@ struct ChannelDetailView: View {
 
                 Toggle(isOn: Binding(
                     get: { ch.isMuted },
-                    set: { Task { await appModel.toggleChannelMute(channelId, isMuted: $0) } }
+                    set: { v in Task { await appModel.toggleChannelMute(channelId, isMuted: v) } }
                 )) {
                     Label("Mute", systemImage: "speaker.slash")
                         .foregroundColor(ch.isMuted ? .red : .primary)

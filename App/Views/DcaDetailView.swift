@@ -60,7 +60,7 @@ struct DcaDetailView: View {
                     Slider(
                         value: Binding(
                             get: { d.level },
-                            set: { Task { await appModel.setDcaLevel(dcaId, level: $0) } }
+                            set: { v in Task { await appModel.setDcaLevel(dcaId, level: v) } }
                         ),
                         in: 0...1
                     )
@@ -76,7 +76,7 @@ struct DcaDetailView: View {
 
                 Toggle(isOn: Binding(
                     get: { d.isMuted },
-                    set: { Task { await appModel.toggleDcaMute(dcaId, isMuted: $0) } }
+                    set: { v in Task { await appModel.toggleDcaMute(dcaId, isMuted: v) } }
                 )) {
                     Label("Mute", systemImage: "speaker.slash")
                         .foregroundColor(d.isMuted ? .red : .primary)
@@ -122,7 +122,7 @@ struct DcaDetailView: View {
                             Spacer()
 
                             Image(systemName: isMember ? "checkmark.circle.fill" : "circle")
-                                .foregroundColor(isMember ? .orange : .tertiary)
+                                .foregroundColor(isMember ? .orange : .secondary)
                                 .font(.title3)
                         }
                         .padding(.horizontal)

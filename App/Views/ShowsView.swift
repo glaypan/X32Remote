@@ -58,7 +58,7 @@ struct ShowsView: View {
             Text("No shows")
                 .font(.headline).foregroundColor(.secondary)
             Text("Tap + to create your first show")
-                .font(.caption).foregroundColor(.tertiary)
+                .font(.caption).foregroundColor(.secondary)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 60)
@@ -81,10 +81,10 @@ struct ShowsView: View {
                     }
                     HStack(spacing: 4) {
                         Label("\(card.actions.count)", systemImage: "list.bullet")
-                            .font(.caption2).foregroundColor(.tertiary)
+                            .font(.caption2).foregroundColor(.secondary)
                         if !card.fades.isEmpty {
                             Label("\(card.fades.count)", systemImage: "slider.horizontal.below.square.filled.and.square")
-                                .font(.caption2).foregroundColor(.tertiary)
+                                .font(.caption2).foregroundColor(.secondary)
                         }
                     }
                 }

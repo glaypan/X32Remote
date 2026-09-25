@@ -71,15 +71,17 @@ def api(path, token, raw=False):
     return data if raw else json.loads(data.decode("utf-8"))
 
 
-def latest_run(repo, token, branch=None, wait_first=0):
+def latest_run(repo, token, branch=None, wait_first=0, expect_sha=""):
     """
     取最新一次运行。
 
-    注意：push 之后 GitHub 需要几秒才把 run 登记进来，这期间查询返回空列表。
-    若在这里直接报错退出，「推送完立刻下载」的用法就必然失败 —— 所以按
-    wait_first 秒轮询等待首次出现。
+    两个坑（都真的踩过）：
+      1. push 之后 GitHub 需要几秒才把 run 登记进来，这期间列表可能为空；
+      2. 列表非空但**是上一次的旧运行** —— 直接取 runs[0] 会拿到旧的失败结果，
+         于是"刚推送完就下载"永远失败。
+    所以用 expect_sha 明确等这次提交对应的运行，而不是盲取第一条。
     """
-    q = "/repos/%s/actions/runs?per_page=10" % repo
+    q = "/repos/%s/actions/runs?per_page=20" % repo
     if branch:
         q += "&branch=" + branch
 
@@ -88,14 +90,27 @@ def latest_run(repo, token, branch=None, wait_first=0):
     while True:
         runs = api(q, token).get("workflow_runs", [])
         if runs:
-            return runs[0]
-        if time.time() - t0 >= wait_first:
-            break
-        if not announced:
+            if not expect_sha:
+                return runs[0]
+            for r in runs:
+                if (r.get("head_sha") or "").startswith(expect_sha):
+                    return r
+            if not announced:
+                print("  还没出现提交 %s 的运行记录（GitHub 需数秒登记），等待中 ..."
+                      % expect_sha[:8])
+                announced = True
+        elif not announced:
             print("  还没有运行记录（推送后 GitHub 需数秒登记），等待中 ...")
             announced = True
+
+        if time.time() - t0 >= wait_first:
+            break
         time.sleep(5)
 
+    if expect_sha:
+        sys.exit("等待超时：没找到提交 %s 对应的运行。\n"
+                 "  确认该提交已推送、workflow 已触发；也可用 --status 看当前最新运行。"
+                 % expect_sha[:8])
     sys.exit("该仓库还没有任何 Actions 运行记录 —— 确认 workflow 已推送且至少触发过一次，\n"
              "若是刚推送完，加 --wait 让它先等一会儿再查。")
 
@@ -196,6 +211,8 @@ def main():
                     help="IPA 输出目录（默认项目 outputs/）")
     ap.add_argument("--status", action="store_true", help="只显示最新构建状态，不下载")
     ap.add_argument("--wait", action="store_true", help="若正在构建，则轮询等待完成")
+    ap.add_argument("--expect-sha", default="",
+                    help="只认这次提交触发的运行（推送后必用；否则可能拿到上一次的旧结果）")
     args = ap.parse_args()
 
     if not args.token:
@@ -205,7 +222,9 @@ def main():
     print("仓库: %s" % args.repo)
     print("=" * 60)
 
-    run = latest_run(args.repo, args.token, wait_first=120 if args.wait else 0)
+    wait_first = 180 if args.wait else (60 if args.expect_sha else 0)
+    run = latest_run(args.repo, args.token, wait_first=wait_first,
+                     expect_sha=args.expect_sha)
     print("\n最新一次运行:")
     status, conclusion = show_status(run)
 

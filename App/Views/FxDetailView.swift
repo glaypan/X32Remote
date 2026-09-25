@@ -47,7 +47,7 @@ struct FxDetailView: View {
                     Slider(
                         value: Binding(
                             get: { fx.level },
-                            set: { Task { await appModel.setFxLevel(fxId, level: $0) } }
+                            set: { v in Task { await appModel.setFxLevel(fxId, level: v) } }
                         ),
                         in: 0...1
                     )
@@ -63,7 +63,7 @@ struct FxDetailView: View {
 
                 Toggle(isOn: Binding(
                     get: { fx.isMuted },
-                    set: { Task { await appModel.toggleFxMute(fxId, isMuted: $0) } }
+                    set: { v in Task { await appModel.toggleFxMute(fxId, isMuted: v) } }
                 )) {
                     Label("Mute", systemImage: "speaker.slash")
                         .foregroundColor(fx.isMuted ? .red : .primary)
