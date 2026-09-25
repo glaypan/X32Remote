@@ -29,6 +29,9 @@ Package.resolved
 *.zip
 *.log
 
+# ---- 本地校验工作区（tools/local_verify.sh 用，随时可重建）----
+.localverify/
+
 # ---- Python（tools/ 下的辅助脚本）----
 __pycache__/
 *.pyc
