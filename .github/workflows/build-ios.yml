@@ -32,11 +32,20 @@ jobs:
           echo "--- 可用模拟器 SDK ---"
           xcodebuild -showsdks | grep -i iphoneos || true
 
-      - name: Run core unit tests (SPM, 非阻塞)
+      - name: Run core unit tests (SPM)
+        id: tests
+        # 单测失败不阻塞 IPA 产出（IPA 仍可用于真机联调），但结论会写进构建摘要
         continue-on-error: true
         run: |
-          echo "在 macOS host 上直接跑核心库单测（不需要模拟器）"
-          swift test --parallel 2>&1 | tail -40
+          set -o pipefail
+          # ⚠️ Package.swift 在 X32Remote-ios/ 子目录下，必须在正确的工作目录执行，
+          #    否则 SPM 找不到包、这一步会静默失败（曾经就是这样）。
+          cd X32Remote-ios
+          echo "工作目录: $(pwd)"
+          swift --version
+          swift test 2>&1 | tee "$RUNNER_TEMP/tests.log" | tail -80
+          echo "--- 测试摘要 ---"
+          grep -E "Executed [0-9]+ test" "$RUNNER_TEMP/tests.log" | tail -5 || true
 
       - name: Build app (unsigned)
         run: |
@@ -127,7 +136,8 @@ jobs:
             echo "- 产物: \`X32Remote-unsigned-ipa\`（含 X32Remote-unsigned.ipa）"
             echo "- 架构: arm64（真机）"
             echo "- Bundle ID: com.example.X32Remote"
-            echo "- 部署目标: iOS 15.0+"
+            echo "- 部署目标: iOS 17.0+（代码使用 Observation 框架）"
+            echo "- 核心库单测: **${{ steps.tests.outcome }}**"
             echo ""
             echo "下一步：在本机运行 \`fetch_ipa.py\` 下载并自动解包，再用 Sideloadly 签名安装。"
           } >> "$GITHUB_STEP_SUMMARY"

@@ -12,9 +12,27 @@ final class AppModel {
     var dcaGroups: [DcaUI] = []
     var buses: [BusUI] = []
     var fxProcessors: [FxUI] = []
-    var showCards: [ShowCard] = []
-    var isExecutingShow = false
-    var showProgress: Double = 0
+
+    /// 演出卡片库（与服务端同一份 JSON 格式，可互相导入导出）
+    var showCards: [TimelineCard] = []
+    /// 卡片执行进度
+    var cardProgress = EngineProgress()
+
+    /// 桥接模式：手机直连真台，App 内部维护虚拟台面并双向同步
+    var bridgeEnabled = false {
+        didSet {
+            UserDefaults.standard.set(bridgeEnabled, forKey: Self.bridgeEnabledKey)
+            client?.bridge.setEnabled(bridgeEnabled)
+        }
+    }
+    var bridgeState: BridgeEngine.State = .off
+    /// 桥接事件（真台手动干预告警、链路状态变化等），最新在前
+    var bridgeEvents: [BridgeEvent] = []
+
+    /// 卡片引擎（连接后创建；未连接时仍可编辑卡片）
+    private(set) var showEngine: ShowEngine?
+
+    var isExecutingShow: Bool { cardProgress.isRunning }
 
     var errorMessage: String?
     var discoveredMixers: [DiscoveredMixer] = []
@@ -55,6 +73,7 @@ final class AppModel {
     init() {
         resetToDefaults()
         showCards = Self.loadShowCards()
+        bridgeEnabled = UserDefaults.standard.bool(forKey: Self.bridgeEnabledKey)
         mixerIP = UserDefaults.standard.string(forKey: Self.mixerIPKey) ?? ""
         let savedPort = UserDefaults.standard.object(forKey: Self.mixerPortKey) as? Int
         if let savedPort, savedPort > 0, savedPort <= 65535 {
@@ -111,6 +130,36 @@ final class AppModel {
                 }
             }
         }
+
+        // 卡片引擎：以本次连接作为台面写入通道
+        let library = showCards.isEmpty ? TimelineCard.defaults() : showCards
+        let engine = ShowEngine(mixer: client, cards: library)
+        engine.progressSink = { [weak self] p in
+            Task { @MainActor in self?.cardProgress = p }
+        }
+        engine.eventSink = { [weak client] text in
+            // 卡片冲突告警与真台回读告警汇入同一条事件流
+            client?.bridge.pushEvent(text, isWarning: true)
+        }
+        client.showEngine = engine
+        self.showEngine = engine
+        if showCards.isEmpty { showCards = library }
+
+        // 桥接：回声抑制 / 回读分类 / 链路状态 / 事件流
+        client.bridge.onEvent = { [weak self] event in
+            Task { @MainActor in
+                guard let self else { return }
+                self.bridgeEvents.insert(event, at: 0)
+                if self.bridgeEvents.count > BridgeEngine.eventLimit {
+                    self.bridgeEvents.removeLast(self.bridgeEvents.count - BridgeEngine.eventLimit)
+                }
+            }
+        }
+        client.bridge.onStateChange = { [weak self] state in
+            Task { @MainActor in self?.bridgeState = state }
+        }
+        client.bridge.setEnabled(bridgeEnabled)
+
         client.connect()
         self.client = client
     }
@@ -121,6 +170,11 @@ final class AppModel {
         syncTask?.cancel()
         syncTask = nil
         stateNeedsSync = false
+        showEngine?.stopAll()
+        showEngine = nil
+        cardProgress = EngineProgress()
+        client?.bridge.setEnabled(false)
+        bridgeState = .off
         client?.disconnect()
         client = nil
         connectionStatus = .disconnected
@@ -513,95 +567,84 @@ final class AppModel {
         setChannelDcaMask(channelId, mask: newMask)
     }
 
-    // MARK: - Show
+    // MARK: - Show（时间轴调度器）
+
+    /// 启动卡片（若已有卡片在跑会先停掉；卡片可带 next 自动接续）
+    @MainActor
+    func runShowCard(_ card: TimelineCard) {
+        guard let engine = showEngine else {
+            errorMessage = "请先连接调音台"
+            return
+        }
+        engine.run(cardId: card.id)
+    }
 
     @MainActor
-    func executeShowCard(_ card: ShowCard) async {
-        guard let client else { return }
-        isExecutingShow = true
-        showProgress = 0
-
-        let sender = ShowOscSender(client: client)
-        let provider = ShowStateProvider(appModel: self)
-        let runner = ShowRunner(sender: sender, stateProvider: provider)
-
-        runner.onProgress = { [weak self] p in
-            Task { @MainActor in
-                self?.showProgress = p
-            }
-        }
-
-        do {
-            try await runner.execute(card: card)
-            showProgress = 1
-            try await Task.sleep(nanoseconds: 500_000_000)
-        } catch {
-            errorMessage = "Show execution failed: \(error.localizedDescription)"
-        }
-
-        isExecutingShow = false
+    func stopShow() {
+        showEngine?.stopAll()
+        cardProgress = EngineProgress()
     }
 
     @MainActor
     func addShowCard(name: String) {
-        let actions: [ShowAction] = [ShowAction(id: UUID().uuidString, kind: .sceneRecall(scene: 1, waitMs: nil))]
-        let card = ShowCard(id: UUID().uuidString, name: name, actions: actions)
+        let card = TimelineCard(id: UUID().uuidString, name: name, desc: "新建卡片",
+                                actions: [CardAction.new(kind: "fade_ch")])
         showCards.append(card)
-        Self.saveShowCards(showCards)
+        persistCards()
     }
 
     @MainActor
-    func deleteShowCard(_ card: ShowCard) {
+    func deleteShowCard(_ card: TimelineCard) {
         showCards.removeAll { $0.id == card.id }
-        Self.saveShowCards(showCards)
+        // 清掉指向它的 next，避免卡片链接到空处
+        for i in 0..<showCards.count {
+            if showCards[i].next == card.id { showCards[i].next = nil }
+        }
+        persistCards()
     }
 
     @MainActor
-    func updateShowCard(_ card: ShowCard) {
+    func updateShowCard(_ card: TimelineCard) {
         guard let index = showCards.firstIndex(where: { $0.id == card.id }) else { return }
         showCards[index] = card
+        persistCards()
+    }
+
+    @MainActor
+    func togglePin(_ card: TimelineCard) {
+        guard let index = showCards.firstIndex(where: { $0.id == card.id }) else { return }
+        showCards[index].pinned.toggle()
+        persistCards()
+    }
+
+    /// 卡片库变更后同步给引擎（未连接时引擎不存在，只落盘）
+    @MainActor
+    private func persistCards() {
         Self.saveShowCards(showCards)
+        showEngine?.setCards(showCards)
     }
 
     // MARK: - Persistence
 
-    private static let showsKey = "saved_show_cards"
+    private static let showsKey = "saved_show_cards_v2"
     private static let mixerIPKey = "mixer_ip"
     private static let mixerPortKey = "mixer_port"
+    private static let bridgeEnabledKey = "bridge_enabled"
 
-    private static func saveShowCards(_ cards: [ShowCard]) {
+    private static func saveShowCards(_ cards: [TimelineCard]) {
         guard let data = try? JSONEncoder().encode(cards) else { return }
         UserDefaults.standard.set(data, forKey: showsKey)
     }
 
-    private static func loadShowCards() -> [ShowCard] {
+    /// 读取卡片库。旧版（ShowCard v1）数据无法解码时回落到出厂卡片，
+    /// 不做自动迁移（两代格式差异太大，静默转换容易产生错误动作）。
+    private static func loadShowCards() -> [TimelineCard] {
         guard let data = UserDefaults.standard.data(forKey: showsKey),
-              let cards = try? JSONDecoder().decode([ShowCard].self, from: data) else {
-            return ShowCard.defaultShows()
+              let cards = try? JSONDecoder().decode([TimelineCard].self, from: data),
+              !cards.isEmpty else {
+            return TimelineCard.defaults()
         }
         return cards
-    }
-}
-
-// MARK: - ShowRunner Helpers
-
-private struct ShowOscSender: OscSending {
-    let client: X32Client
-    func send(address: String, args: [OscArgument]) async throws {
-        client.send(OscMessage(address: address, args: args))
-    }
-}
-
-private struct ShowStateProvider: StateProviding {
-    weak var appModel: AppModel?
-    func channelFader(for key: ChannelKey) -> Float {
-        guard let appModel else { return 0 }
-        let num = key.number ?? 0
-        return Float(appModel.channels.first(where: { $0.id == num })?.level ?? 0) / 1024
-    }
-    func dcaFader(for group: Int) -> Float {
-        guard let appModel else { return 0 }
-        return Float(appModel.dcaGroups.first(where: { $0.id == group })?.level ?? 0) / 1024
     }
 }
 

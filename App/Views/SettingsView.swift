@@ -1,18 +1,19 @@
 import SwiftUI
+import X32RemoteCore
 
 struct SettingsView: View {
     @Environment(AppModel.self) private var appModel
-    
+
     var body: some View {
         @Bindable var model = appModel
-        
+
         NavigationStack {
             Form {
                 Section("调音台连接") {
                     TextField("IP 地址", text: $model.mixerIP)
                         .keyboardType(.decimalPad)
                         .autocorrectionDisabled()
-                    
+
                     HStack {
                         Text("端口")
                         Spacer()
@@ -22,7 +23,7 @@ struct SettingsView: View {
                             .frame(width: 100)
                     }
                 }
-                
+
                 Section {
                     if appModel.isConnected {
                         Button("断开连接", role: .destructive) {
@@ -34,7 +35,7 @@ struct SettingsView: View {
                                 await appModel.connect()
                             }
                         }
-                        
+
                         Button("自动发现") {
                             Task {
                                 await appModel.discoverMixers()
@@ -43,7 +44,13 @@ struct SettingsView: View {
                         .disabled(appModel.isDiscovering)
                     }
                 }
-                
+
+                bridgeSection
+
+                if !appModel.bridgeEvents.isEmpty {
+                    bridgeEventSection
+                }
+
                 Section("连接方式") {
                     Text("路由器/交换机：调音台网口接入路由器，手机连同一网络（有线或 WiFi 都行），填调音台 IP 或点「自动发现」。")
                         .font(.footnote)
@@ -58,7 +65,7 @@ struct SettingsView: View {
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
-                
+
                 if !appModel.discoveredMixers.isEmpty {
                     Section("发现的调音台") {
                         ForEach(appModel.discoveredMixers) { mixer in
@@ -84,7 +91,7 @@ struct SettingsView: View {
                         }
                     }
                 }
-                
+
                 if appModel.isDiscovering {
                     Section {
                         HStack {
@@ -97,7 +104,7 @@ struct SettingsView: View {
                         }
                     }
                 }
-                
+
                 Section("状态") {
                     HStack {
                         Circle()
@@ -109,6 +116,77 @@ struct SettingsView: View {
                 }
             }
             .navigationTitle("设置")
+        }
+    }
+
+    // MARK: - 桥接模式
+
+    private var bridgeSection: some View {
+        Section {
+            Toggle(isOn: appModelBridgeEnabled) {
+                Label("手机自带桥接引擎", systemImage: "arrow.left.arrow.right")
+            }
+            if appModel.bridgeEnabled {
+                HStack {
+                    Circle()
+                        .fill(bridgeColor)
+                        .frame(width: 10, height: 10)
+                    Text(appModel.bridgeState.label)
+                        .foregroundStyle(.secondary)
+                }
+                Text("手机直连真台时，App 内部维护一份本地虚拟台面：卡片渐变、回声抑制、真台手动干预检测全部在手机里完成，不需要电脑参与。")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                Text("真台面板上有人动了某路推子、而那一路正被卡片渐变驱动时，只会冻结那一路并弹出提示，卡片的其它动作与通道照常执行。")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+        } header: {
+            Text("桥接模式")
+        } footer: {
+            if !appModel.bridgeEnabled {
+                Text("关闭时 App 只作为纯遥控器使用；开启后可脱离电脑独立跑卡片自动化。")
+            }
+        }
+    }
+
+    /// `bridgeEnabled` 带持久化副作用，用显式 Binding 避免 @Bindable 内部写入路径差异
+    private var appModelBridgeEnabled: Binding<Bool> {
+        Binding(get: { appModel.bridgeEnabled },
+                set: { appModel.bridgeEnabled = $0 })
+    }
+
+    private var bridgeColor: Color {
+        switch appModel.bridgeState {
+        case .off:    return Color.gray
+        case .link:   return Color.orange
+        case .online: return Color.green
+        case .stale:  return Color.red
+        }
+    }
+
+    private var bridgeEventSection: some View {
+        Section {
+            ForEach(Array(appModel.bridgeEvents.prefix(10))) { event in
+                HStack(alignment: .top, spacing: 8) {
+                    Image(systemName: event.isWarning ? "exclamationmark.triangle.fill" : "info.circle")
+                        .font(.caption)
+                        .foregroundColor(event.isWarning ? Color.orange : Color.secondary)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(event.text)
+                            .font(.caption)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Text(event.time)
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                    }
+                }
+            }
+            Button("清空事件", role: .destructive) {
+                appModel.bridgeEvents.removeAll()
+            }
+        } header: {
+            Text("桥接事件（最近 \(min(appModel.bridgeEvents.count, 10)) 条）")
         }
     }
 }

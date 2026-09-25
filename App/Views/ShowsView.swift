@@ -10,6 +10,9 @@ struct ShowsView: View {
         NavigationStack {
             ZStack(alignment: .bottom) {
                 List {
+                    if !appModel.bridgeEvents.isEmpty {
+                        eventSection
+                    }
                     if appModel.showCards.isEmpty {
                         emptyState
                     } else {
@@ -52,6 +55,35 @@ struct ShowsView: View {
         }
     }
 
+    // MARK: - 桥接事件（真台手动干预 / 链路告警）
+
+    private var eventSection: some View {
+        Section {
+            ForEach(Array(appModel.bridgeEvents.prefix(3))) { event in
+                HStack(alignment: .top, spacing: 8) {
+                    Image(systemName: event.isWarning ? "exclamationmark.triangle.fill" : "info.circle")
+                        .font(.caption)
+                        .foregroundColor(event.isWarning ? Color.orange : Color.secondary)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(event.text)
+                            .font(.caption)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Text(event.time)
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                    }
+                }
+            }
+        } header: {
+            HStack {
+                Text("最近事件")
+                Spacer()
+                Button("清空") { appModel.bridgeEvents.removeAll() }
+                    .font(.caption2)
+            }
+        }
+    }
+
     private var emptyState: some View {
         VStack(spacing: 12) {
             Image(systemName: "tray").font(.system(size: 40)).foregroundColor(.secondary)
@@ -66,27 +98,29 @@ struct ShowsView: View {
         .listRowSeparator(.hidden)
     }
 
-    private func showCardRow(_ card: ShowCard) -> some View {
+    // MARK: - 卡片行
+
+    private func showCardRow(_ card: TimelineCard) -> some View {
         NavigationLink(destination: ShowDetailView(card: card)) {
             HStack {
                 circleIcon(card)
 
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(card.name)
-                        .font(.headline)
-                    if let desc = card.description, !desc.isEmpty {
-                        Text(desc)
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: 4) {
+                        if card.pinned {
+                            Image(systemName: "pin.fill")
+                                .font(.caption2)
+                                .foregroundColor(.orange)
+                        }
+                        Text(card.name)
+                            .font(.headline)
+                    }
+                    if !card.desc.isEmpty {
+                        Text(card.desc)
                             .font(.caption).foregroundColor(.secondary)
                             .lineLimit(1)
                     }
-                    HStack(spacing: 4) {
-                        Label("\(card.actions.count)", systemImage: "list.bullet")
-                            .font(.caption2).foregroundColor(.secondary)
-                        if !card.fades.isEmpty {
-                            Label("\(card.fades.count)", systemImage: "slider.horizontal.below.square.filled.and.square")
-                                .font(.caption2).foregroundColor(.secondary)
-                        }
-                    }
+                    timelineSummary(card)
                 }
 
                 Spacer()
@@ -96,33 +130,69 @@ struct ShowsView: View {
         }
     }
 
-    private func circleIcon(_ card: ShowCard) -> some View {
+    /// 卡片的时间轴概览：动作数 · 总时长 · 并行标记 · 接续
+    private func timelineSummary(_ card: TimelineCard) -> some View {
+        HStack(spacing: 8) {
+            Label("\(card.actions.count)", systemImage: "list.bullet")
+            Label(String(format: "%.1fs", card.totalSeconds), systemImage: "clock")
+            if card.hasParallelActions {
+                Label("并行", systemImage: "arrow.triangle.branch")
+            }
+            if let next = card.next, !next.isEmpty {
+                Label(nextCardName(next), systemImage: "arrow.right.circle")
+            }
+        }
+        .font(.caption2)
+        .foregroundColor(.secondary)
+        .lineLimit(1)
+    }
+
+    private func nextCardName(_ id: String) -> String {
+        appModel.showCards.first(where: { $0.id == id })?.name ?? "接续"
+    }
+
+    private func circleIcon(_ card: TimelineCard) -> some View {
         ZStack {
             Circle()
-                .fill(Color(hex: card.color ?? "007AFF").opacity(0.15))
+                .fill(Color.accentColor.opacity(0.15))
                 .frame(width: 36, height: 36)
             Image(systemName: "play.fill")
                 .font(.caption)
-                .foregroundColor(Color(hex: card.color ?? "007AFF"))
+                .foregroundColor(Color.accentColor)
         }
     }
+
+    // MARK: - 执行进度
 
     private var progressBar: some View {
         VStack(spacing: 4) {
             HStack {
                 Image(systemName: "play.circle.fill")
                     .font(.caption).foregroundColor(.green)
-                Text("Executing...")
+                Text(appModel.cardProgress.name.isEmpty ? "执行中…" : appModel.cardProgress.name)
                     .font(.caption).fontWeight(.medium)
+                    .lineLimit(1)
                 Spacer()
-                Text("\(Int(appModel.showProgress * 100))%")
+                Text("\(Int(appModel.cardProgress.progress * 100))%")
                     .font(.caption2.monospacedDigit()).foregroundColor(.secondary)
+                Button("停止") { appModel.stopShow() }
+                    .font(.caption2)
+                    .padding(.leading, 6)
             }
             .padding(.horizontal)
 
-            ProgressView(value: appModel.showProgress)
+            ProgressView(value: Double(appModel.cardProgress.progress))
                 .tint(.green)
                 .padding(.horizontal)
+
+            if !appModel.cardProgress.step.isEmpty {
+                Text(appModel.cardProgress.step)
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal)
+                    .lineLimit(1)
+            }
         }
         .padding(.vertical, 8)
         .background(.ultraThinMaterial)
@@ -133,43 +203,21 @@ struct ShowsView: View {
 
 private struct ExecuteButton: View {
     @Environment(AppModel.self) private var appModel
-    let card: ShowCard
+    let card: TimelineCard
 
     var body: some View {
         Button {
-            Task { await appModel.executeShowCard(card) }
+            appModel.runShowCard(card)
         } label: {
             Label("Run", systemImage: "play.fill")
                 .font(.caption.bold())
                 .padding(.horizontal, 12)
                 .padding(.vertical, 6)
                 .background(appModel.isExecutingShow ? Color.gray.opacity(0.2) : Color.green.opacity(0.15))
-                .foregroundColor(appModel.isExecutingShow ? .gray : .green)
+                .foregroundColor(appModel.isExecutingShow ? Color.gray : Color.green)
                 .cornerRadius(6)
         }
         .buttonStyle(.plain)
-        .disabled(appModel.isExecutingShow)
-    }
-}
-
-// MARK: - Hex Color Helper
-
-private extension Color {
-    init(hex: String) {
-        let hex = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
-        let scanner = Scanner(string: hex)
-        var int: UInt64 = 0
-        scanner.scanHexInt64(&int)
-        let a, r, g, b: UInt64
-        switch hex.count {
-        case 6:
-            (a, r, g, b) = (255, (int >> 16) & 0xFF, (int >> 8) & 0xFF, int & 0xFF)
-        case 8:
-            (a, r, g, b) = ((int >> 24) & 0xFF, (int >> 16) & 0xFF, (int >> 8) & 0xFF, int & 0xFF)
-        default:
-            (a, r, g, b) = (255, 0, 0, 0)
-        }
-        self.init(.sRGB, red: Double(r) / 255, green: Double(g) / 255, blue: Double(b) / 255, opacity: Double(a) / 255)
     }
 }
 

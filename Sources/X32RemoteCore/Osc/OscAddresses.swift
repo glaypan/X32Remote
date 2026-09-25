@@ -64,8 +64,12 @@ public enum OscAddresses {
     }
     
     /// 生成通道 DCA 成员分配地址 (bitmask, bit 0 = DCA 1)
+    ///
+    /// ⚠️ 以模拟器与《共享协议规范》第 3.3 节为准使用 `mix` 段
+    /// （历史写法 `/ch/NN/grp/dca` 模拟器不认，会导致 DCA 成员读写静默失效；
+    ///  解析端 `OscAddressParser` 对两种写法都兼容）。
     public static func channelDca(_ channel: Int) -> String {
-        return String(format: "/ch/%02d/grp/dca", channel)
+        return String(format: "/ch/%02d/mix/dca", channel)
     }
     
     // MARK: - EQ 地址生成

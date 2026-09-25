@@ -1,8 +1,19 @@
 import Foundation
 import Network
 
-public final class X32Client: @unchecked Sendable {
+public final class X32Client: @unchecked Sendable, MixerWriting {
     public enum Status: Equatable, Sendable { case disconnected, connecting, connected, failed(String) }
+
+    /// 桥接引擎：回声抑制 / 回读分类 / 链路状态 / 事件流。
+    ///
+    /// App 一端连真台时，这里承担的是"服务端桥接"的角色：
+    /// 本地虚拟台面立即生效，同时把写入转发出去，并把回读同步回来。
+    public let bridge = BridgeEngine()
+
+    /// 卡片引擎的冲突保护接入点（由 App 层注入）。
+    ///
+    /// 手动操作正在被卡片驱动的通道时，只冻结该路，卡片其余动作继续。
+    public weak var showEngine: ShowEngine?
 
     /// /xinfo 探测结果 (自动发现用)
     public struct XinfoReply: Equatable, Sendable {
@@ -67,9 +78,14 @@ public final class X32Client: @unchecked Sendable {
         send(OscMessage(address: OscAddresses.subscribe, args: [.int(1)]))
         // 首次电平表请求 (模拟器据此加入推送列表)
         send(OscMessage(address: OscAddresses.metersChannels))
+        // 保活：真台 10 秒无续期会取消遥控链接，协议规范定的是 5 秒
         timer = DispatchSource.makeTimerSource(queue: queue)
-        timer?.schedule(deadline: .now() + 9, repeating: 9)
-        timer?.setEventHandler { [weak self] in self?.send(OscMessage(address: OscAddresses.keepalive)) }
+        timer?.schedule(deadline: .now() + 5, repeating: 5)
+        timer?.setEventHandler { [weak self] in
+            self?.send(OscMessage(address: OscAddresses.keepalive), source: .sync)
+            // 顺带检查桥接连路是否已长期无回包
+            self?.bridge.refreshStaleness()
+        }
         timer?.resume()
         // 电平表轮询: 真机上 /meters/1 每次请求返回一帧,以 150ms 周期刷新
         meterTimer = DispatchSource.makeTimerSource(queue: queue)
@@ -95,8 +111,25 @@ public final class X32Client: @unchecked Sendable {
         onStatus?(.disconnected)
     }
 
-    public func send(_ message: OscMessage) {
+    /// 发送一条 OSC 消息。
+    ///
+    /// - Parameter source: 写入来源。`manual`（默认）会触发冲突检测：
+    ///   若该路正被卡片渐变驱动，只冻结这一路，卡片其余动作继续执行。
+    public func send(_ message: OscMessage, source: WriteSource = .manual) {
+        let target = OscAddressParser.parse(message.address)
+
+        // 1) 手动接管检查（卡片驱动中的通道被用户抢走）
+        if source.triggersConflictCheck, let target {
+            showEngine?.checkManualTakeover(kind: target.kind, idx: target.idx)
+        }
+
         guard let c = connection else { return }
+
+        // 2) 登记回声抑制记录：这一路的值是我们刚写出去的
+        if let target, let value = OscAddressParser.numericValue(message) {
+            bridge.noteForward(kind: target.kind, idx: target.idx, value: value)
+        }
+
         do {
             let data = try OscCodec.encode(message)
             c.send(content: data, completion: .contentProcessed { [weak self] e in
@@ -104,11 +137,37 @@ public final class X32Client: @unchecked Sendable {
                     self?.onStatus?(.failed(e.localizedDescription))
                 }
             })
-            // 乐观更新: 本地立即生效,等待调音台回包校准
+            // 乐观更新: 本地虚拟台面立即生效,等待调音台回包校准
             apply(message)
         } catch {
             onStatus?(.failed(error.localizedDescription))
         }
+    }
+
+    /// 台面上的一次写入（`MixerWriting` 实现，供卡片引擎调用）
+    public func writeValue(kind: String, idx: Int, value: Float, source: WriteSource) {
+        guard let address = MixerSpec.address(kind: kind, idx: idx) else { return }
+        let arg: OscArgument
+        if kind == "ch_dca" {
+            arg = .int(Int32(min(max(value, 0), 255)))
+        } else if kind.hasSuffix("_on") {
+            arg = .int(value != 0 ? 1 : 0)
+        } else {
+            arg = .float(min(max(value, 0), 1))
+        }
+        send(OscMessage(address: address, args: [arg]), source: source)
+    }
+
+    public func writeRaw(address: String, args: [OscArgument]) {
+        send(OscMessage(address: address, args: args), source: .action)
+    }
+
+    public func readFader(kind: String, idx: Int) -> Float {
+        state.fader(kind: kind, idx: idx)
+    }
+
+    public func targetLabel(kind: String, idx: Int) -> String {
+        state.targetLabel(kind: kind, idx: idx)
     }
 
     private func receive(_ c: NWConnection) {
@@ -116,7 +175,7 @@ public final class X32Client: @unchecked Sendable {
             if let data {
                 do {
                     for m in try OscCodec.decodeMessages(data) {
-                        self?.apply(m)
+                        self?.handleIncoming(m)
                         self?.onMessage?(m)
                     }
                 } catch { }
@@ -127,35 +186,63 @@ public final class X32Client: @unchecked Sendable {
         }
     }
 
-    /// 初始状态查询 (一次性拉取全部推子/静音/名称)
+    /// 真台回读：先判定这是自己的回声还是真台端的变化，再落到本地台面。
+    ///
+    /// 真台端的变化若命中卡片正在驱动的那一路，会触发手动干预告警
+    /// （真台面板被人动了推子 —— 与服务端桥接的回读处理一致）。
+    private func handleIncoming(_ m: OscMessage) {
+        bridge.noteActivity()
+
+        if let target = OscAddressParser.parse(m.address),
+           let value = OscAddressParser.numericValue(m),
+           bridge.classify(kind: target.kind, idx: target.idx, value: value) == .remoteChange {
+            showEngine?.checkManualTakeover(kind: target.kind, idx: target.idx)
+        }
+
+        apply(m)
+    }
+
+    /// 初始状态查询 (一次性拉取全部推子/静音/名称/成员)
     private func queryInitialState() {
         for i in 1...32 {
             let p = "/ch/\(String(format: "%02d", i))"
-            for s in ["/mix/fader", "/mix/on", "/config/name", "/grp/dca"] {
-                send(OscMessage(address: p + s))
+            for s in ["/mix/fader", "/mix/on", "/config/name"] {
+                send(OscMessage(address: p + s), source: .sync)
             }
+            // ⚠️ DCA 成员地址以模拟器/桥接规范为准用 mix 段（历史写法 grp 段已不改回）
+            send(OscMessage(address: MixerSpec.channelDcaMask(i)), source: .sync)
         }
         // 主输出 Main LR
-        send(OscMessage(address: OscAddresses.mainFader))
-        send(OscMessage(address: OscAddresses.mainMute))
-        send(OscMessage(address: OscAddresses.mainName))
+        send(OscMessage(address: OscAddresses.mainFader), source: .sync)
+        send(OscMessage(address: OscAddresses.mainMute), source: .sync)
+        send(OscMessage(address: OscAddresses.mainName), source: .sync)
         for i in 1...8 {
             let p = "/dca/\(String(format: "%02d", i))"
             for s in ["/fader", "/on", "/config/name"] {
-                send(OscMessage(address: p + s))
+                send(OscMessage(address: p + s), source: .sync)
             }
         }
         for i in 1...16 {
             let p = "/bus/\(String(format: "%02d", i))"
             for s in ["/mix/fader", "/mix/on", "/config/name"] {
-                send(OscMessage(address: p + s))
+                send(OscMessage(address: p + s), source: .sync)
+            }
+        }
+        // AuxIn / USB / FX Return / Matrix —— 卡片的 fade_all 与 rel_db 会驱动这些分组，
+        // 虚拟台面必须先把它们的当前值读回来，否则渐变起点会从 0 开始。
+        for (group, n) in [("auxin", 6), ("usb", 2), ("fxret", 8), ("mtx", 6)] {
+            for i in 1...n {
+                let p = "/\(group)/\(String(format: "%02d", i))"
+                for s in ["/mix/fader", "/mix/on", "/config/name"] {
+                    send(OscMessage(address: p + s), source: .sync)
+                }
             }
         }
         for i in 1...4 {
-            send(OscMessage(address: "/fx/\(i)/config/name"))
+            send(OscMessage(address: "/fx/\(i)/config/name"), source: .sync)
             let r = "/rtn/fx/\(i)"
             for s in ["/mix/fader", "/mix/on"] {
-                send(OscMessage(address: r + s))
+                send(OscMessage(address: r + s), source: .sync)
             }
         }
     }
@@ -171,20 +258,16 @@ public final class X32Client: @unchecked Sendable {
                                   timeout: TimeInterval = 0.6,
                                   completion: @escaping @Sendable (XinfoReply?) -> Void) {
         let queue = DispatchQueue(label: "x32remote.probe")
-        var finished = false
+
         guard let oscPort = NWEndpoint.Port(rawValue: port) else {
             completion(nil)
             return
         }
         let connection = NWConnection(host: NWEndpoint.Host(host), port: oscPort, using: .udp)
 
-        // 所有回调都在同一个串行 queue 上执行,finished 无需额外加锁
-        func finish(_ reply: XinfoReply?) {
-            guard !finished else { return }
-            finished = true
-            connection.cancel()
-            completion(reply)
-        }
+        // 用一个 Sendable 状态盒持有可变状态,使下方闭包只需捕获不可变引用。
+        // 所有回调都跑在同一个串行 queue 上,故内部无需加锁。
+        let probe = ProbeState(connection: connection, completion: completion)
 
         connection.stateUpdateHandler = { state in
             switch state {
@@ -193,7 +276,7 @@ public final class X32Client: @unchecked Sendable {
                     connection.send(content: data, completion: .contentProcessed { _ in })
                 }
             case .failed, .cancelled:
-                finish(nil)
+                probe.finish(nil)
             default:
                 break
             }
@@ -201,7 +284,7 @@ public final class X32Client: @unchecked Sendable {
 
         connection.receiveMessage { data, _, _, error in
             guard let data, error == nil else {
-                finish(nil)
+                probe.finish(nil)
                 return
             }
             let reply = (try? OscCodec.decodeMessages(data))?.compactMap { message -> XinfoReply? in
@@ -217,16 +300,26 @@ public final class X32Client: @unchecked Sendable {
                                   model: strings[2],
                                   version: strings.count > 3 ? strings[3] : "")
             }.first
-            finish(reply)
+            probe.finish(reply)
         }
 
         connection.start(queue: queue)
         queue.asyncAfter(deadline: .now() + timeout) {
-            finish(nil)
+            probe.finish(nil)
         }
     }
 
     // MARK: - 状态解析
+
+    private func auxState(group: String, key: String, index: Int) -> AuxState {
+        let st = state
+        switch group {
+        case "auxin": return st.auxins[key] ?? AuxState(index: index)
+        case "usb":   return st.usbs[key] ?? AuxState(index: index)
+        case "fxret": return st.fxRets[key] ?? AuxState(index: index)
+        default:      return st.mtxs[key] ?? AuxState(index: index)
+        }
+    }
 
     private func apply(_ m: OscMessage) {
         guard let v = m.args.first else { return }
@@ -299,8 +392,33 @@ public final class X32Client: @unchecked Sendable {
             return
         }
 
+        // AuxIn / USB / FX Return / Matrix —— 卡片的 fade_all 与 rel_db 会写入这些分组，
+        // 虚拟台面必须能记下它们的当前值。
+        let p = m.address.split(separator: "/")
+        let auxGroups: Set<String> = ["auxin", "usb", "fxret", "mtx"]
+        if p.count >= 4, auxGroups.contains(String(p[0])) {
+            var digits = String(p[1])
+            while let last = digits.last, last == "L" || last == "R" { digits.removeLast() }
+            guard let idx = Int(digits) else { return }
+            let group = String(p[0])
+            let key = "\(group)/\(String(format: "%02d", idx))"
+            var s = auxState(group: group, key: key, index: idx)
+            if m.address.hasSuffix("/fader"), let n = number { s.fader = n }
+            if m.address.hasSuffix("/on"), let n = number { s.mute = n == 0 }
+            if p.last == "name", case .string(let x) = v { s.x32Name = x }
+            updateState { st in
+                switch group {
+                case "auxin": st.auxins[key] = s
+                case "usb":   st.usbs[key] = s
+                case "fxret": st.fxRets[key] = s
+                default:      st.mtxs[key] = s
+                }
+            }
+            return
+        }
+
         // Channel messages
-        let p = m.address.split(separator: "/"); guard p.count >= 4 else { return }
+        guard p.count >= 4 else { return }
         let key = p[1] == "main" ? "main/st" : "\(p[1])/\(p[2])"
         var s = state.channels[key] ?? ChannelState()
 
@@ -353,5 +471,29 @@ public final class X32Client: @unchecked Sendable {
         }
 
         updateState { $0.channels[key] = s }
+    }
+}
+
+/// `probeXinfo` 的一次性状态盒。
+///
+/// 之所以抽成类型而不是局部函数:局部函数被并发闭包捕获时必须标注 `@Sendable`,
+/// 而它又捕获了可变状态,二者无法同时满足(Swift 6 模式下直接报错)。
+/// 改为引用类型后,闭包只捕获这个不可变引用即可。
+/// 所有访问都发生在同一个串行 queue 上,故标注 `@unchecked Sendable`。
+private final class ProbeState: @unchecked Sendable {
+    private let connection: NWConnection
+    private let completion: @Sendable (X32Client.XinfoReply?) -> Void
+    private var finished = false
+
+    init(connection: NWConnection, completion: @escaping @Sendable (X32Client.XinfoReply?) -> Void) {
+        self.connection = connection
+        self.completion = completion
+    }
+
+    func finish(_ reply: X32Client.XinfoReply?) {
+        guard !finished else { return }
+        finished = true
+        connection.cancel()
+        completion(reply)
     }
 }
