@@ -636,8 +636,9 @@ final class AppModel {
         UserDefaults.standard.set(data, forKey: showsKey)
     }
 
-    /// 读取卡片库。旧版（ShowCard v1）数据无法解码时回落到出厂卡片，
-    /// 不做自动迁移（两代格式差异太大，静默转换容易产生错误动作）。
+    /// 读取卡片库。旧版卡片格式（键 `saved_show_cards`，模型与服务端 v1 对齐）
+    /// 无法解码时直接回落到出厂卡片，不做自动迁移
+    /// （两代格式差异太大，静默转换容易产生错误动作）。
     private static func loadShowCards() -> [TimelineCard] {
         guard let data = UserDefaults.standard.data(forKey: showsKey),
               let cards = try? JSONDecoder().decode([TimelineCard].self, from: data),

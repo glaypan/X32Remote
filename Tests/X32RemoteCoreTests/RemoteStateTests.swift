@@ -67,55 +67,6 @@ final class RemoteStateTests: XCTestCase {
         XCTAssertEqual(named.displayName, " rhythm ")
     }
 
-    // MARK: - 演出卡片测试
-
-    func testShowCardCreation() {
-        let card = ShowCard(
-            id: "card-1",
-            name: "Opening",
-            actions: [
-                .sceneRecall(scene: 1),
-                .channelFader(channel: .channel(1), value: 0.75),
-                .delay(seconds: 1.0),
-                .channelMute(channel: .channel(2), muted: true)
-            ]
-        )
-
-        XCTAssertEqual(card.id, "card-1")
-        XCTAssertEqual(card.name, "Opening")
-        XCTAssertEqual(card.actions.count, 4)
-    }
-
-    func testShowActionKinds() {
-        let dcaMute = ShowAction.dcaMute(group: 1, muted: true)
-        if case .dcaMute(let index, let mute) = dcaMute.kind {
-            XCTAssertEqual(index, 1)
-            XCTAssertTrue(mute)
-        } else {
-            XCTFail("Expected dcaMute")
-        }
-
-        let scene = ShowAction.sceneRecall(scene: 5)
-        if case .sceneRecall(let sceneNum, _) = scene.kind {
-            XCTAssertEqual(sceneNum, 5)
-        } else {
-            XCTFail("Expected sceneRecall")
-        }
-
-        let wait = ShowAction.delay(seconds: 0.5)
-        if case .wait(let seconds) = wait.kind {
-            XCTAssertEqual(seconds, 0.5, accuracy: 0.0001)
-        } else {
-            XCTFail("Expected wait")
-        }
-    }
-
-    func testDefaultShows() {
-        let shows = ShowCard.defaultShows()
-        XCTAssertFalse(shows.isEmpty)
-        XCTAssertTrue(shows.allSatisfy { !$0.actions.isEmpty })
-    }
-
     // MARK: - RemoteState 集成测试
 
     func testRemoteStateInitialization() {
