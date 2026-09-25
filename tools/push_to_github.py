@@ -12,8 +12,21 @@
   set GITHUB_TOKEN=ghp_xxxxxxxx
   python push_to_github.py --repo X32Remote --public
 
-Token 权限:
-  创建公开仓库 → 经典 PAT 勾 public_repo；创建私有仓库 → 勾 repo。
+Token 权限（经典 PAT，两项都要勾）:
+  public_repo（或 repo）  建仓 + 推送代码；建私有仓库必须用 repo。
+  workflow                推送 .github/workflows/ 下的文件。本仓库首個提交就含
+                          build-ios.yml，缺这个 scope 会被 GitHub 直接拒绝推送
+                          （报错: refusing to allow a Personal Access Token to
+                          create or update workflow ... without `workflow` scope）。
+
+细粒度 PAT: Resource owner 选本人 + 仓库访问选 All repositories，并授予
+  Administration(Read and write)  建仓
+  Contents(Read and write)        推送代码
+  Workflows(Read and write)       推送 workflow 文件
+  Actions(Read)                   读取构建状态与产物（fetch_ipa.py 用）
+
+本脚本会在推送前自动核对经典 PAT 的 scope（GitHub 在响应头里回 X-OAuth-Scopes），
+权限不全时立刻停下并告诉你要补哪一项，不会等推送到一半才失败。
 """
 import argparse
 import json
@@ -30,6 +43,7 @@ OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
 
 def api(method, path, token, payload=None):
+    """返回 (状态码, 解析后的响应体, 响应头)。响应头用于核对 Token 权限。"""
     data = json.dumps(payload).encode() if payload is not None else None
     req = urllib.request.Request(API + path, data=data, method=method, headers={
         "Accept": "application/vnd.github+json",
@@ -41,14 +55,49 @@ def api(method, path, token, payload=None):
     try:
         with OPENER.open(req, timeout=60) as r:
             body = r.read().decode("utf-8")
-            return r.status, (json.loads(body) if body.strip() else {})
+            return r.status, (json.loads(body) if body.strip() else {}), dict(r.headers)
     except urllib.error.HTTPError as e:
         body = e.read().decode("utf-8", "replace")
         try:
             body = json.loads(body)
         except Exception:
             pass
-        return e.code, body
+        return e.code, body, dict(e.headers or {})
+
+
+def parse_scopes(headers):
+    """
+    取令牌授权范围。
+      经典 PAT  → GitHub 在 X-OAuth-Scopes 里回完整 scope 列表
+      细粒度 PAT → 不回这个头（返回 None，表示「无法本地判定」）
+    """
+    raw = headers.get("X-OAuth-Scopes")
+    if raw is None:
+        return None
+    return {s.strip() for s in raw.split(",") if s.strip()}
+
+
+def missing_scopes(scopes, is_private):
+    """缺哪些必需 scope。scopes 为 None（细粒度）时不判定，返回空列表。"""
+    if scopes is None:
+        return []
+    missing = []
+    if is_private:
+        if "repo" not in scopes:
+            missing.append("repo")
+    elif not ({"repo", "public_repo"} & scopes):
+        missing.append("public_repo")
+    # workflow 是硬性要求：仓库里有 .github/workflows/build-ios.yml
+    if "workflow" not in scopes:
+        missing.append("workflow")
+    return missing
+
+
+def push_rejected_for_workflow(output):
+    """识别 GitHub 那条「缺 workflow scope」的拒绝信息（反引号形式可能被 shell 吞掉）"""
+    low = output.lower()
+    return "create or update workflow" in low and "workflow" in low and (
+        "scope" in low or "refusing to allow" in low)
 
 
 def git(*args, cwd=BASE):
@@ -84,15 +133,36 @@ def main():
     if code != 0:
         sys.exit("本地还没有任何提交，请先 git add + git commit。")
 
-    # ---------- 1. 确认身份 ----------
-    st, me = api("GET", "/user", args.token)
+    # ---------- 1. 确认身份 + 预检 Token 权限 ----------
+    st, me, headers = api("GET", "/user", args.token)
     if st != 200:
         sys.exit("Token 无效或权限不足（HTTP %s）：%s" % (st, me))
     user = me["login"]
-    print("已认证: %s" % user)
+    scopes = parse_scopes(headers)
+
+    if scopes is None:
+        print("已认证: %s" % user)
+        print("  Token 类型: 细粒度（GitHub 不回 scope 列表，无法本地预检）")
+        print("  需自行确认已授予: Administration(write) / Contents(write) / Workflows(write) / Actions(read)")
+    else:
+        print("已认证: %s" % user)
+        print("  Token 权限: %s" % (", ".join(sorted(scopes)) or "(未授予任何 scope)"))
+
+    miss = missing_scopes(scopes, is_private)
+    if miss:
+        print()
+        print("!! Token 权限不足，推送必然失败。缺少: %s" % "、".join(miss))
+        print()
+        print("   打开 https://github.com/settings/tokens 编辑该 Token，补勾：")
+        for m in miss:
+            hint = "   ← 仓库含 .github/workflows/，这一项必需" if m == "workflow" else ""
+            print("     [ ] %s%s" % (m, hint))
+        print()
+        print("   提示: 经典 Token 改 scope 后值不变，改完直接重跑本脚本即可。")
+        return 2
 
     # ---------- 2. 建仓（不存在则创建）----------
-    st, info = api("GET", "/repos/%s/%s" % (user, args.repo), args.token)
+    st, info, _ = api("GET", "/repos/%s/%s" % (user, args.repo), args.token)
     if st == 200:
         print("仓库已存在，直接复用: %s" % info["html_url"])
         repo_url = info["clone_url"]
@@ -106,7 +176,7 @@ def main():
             "has_wiki": False,
             "auto_init": False,          # 不要自动建 README，否则 push 会冲突
         }
-        st, info = api("POST", "/user/repos", args.token, payload)
+        st, info, _ = api("POST", "/user/repos", args.token, payload)
         if st not in (200, 201):
             extra = ""
             if isinstance(info, dict) and "message" in info:
@@ -133,7 +203,10 @@ def main():
     # push 的进度信息在 stderr，不打印会显得卡住
     if code != 0:
         print(out)
-        sys.exit("推送失败。若提示认证错误，检查 Token 是否为有效值、是否勾了 repo 权限。")
+        if push_rejected_for_workflow(out):
+            sys.exit("推送被拒：Token 缺少 workflow 权限（仓库含 .github/workflows/build-ios.yml）。\n"
+                     "    修复: https://github.com/settings/tokens → 编辑该 Token → 补勾 workflow → 重跑本脚本。")
+        sys.exit("推送失败。若提示认证错误，检查 Token 是否为有效值、是否勾了 public_repo/repo。")
     print(out.strip()[-500:] or "推送完成")
 
     # ---------- 4. 把 token 从 remote URL 里撤掉 ----------

@@ -72,8 +72,8 @@ def main():
 
     if not args.token:
         sys.exit("缺少 Token。请先: set GITHUB_TOKEN=ghp_xxxx\n"
-                 "（在 GitHub → Settings → Developer settings → Personal access tokens 生成，"
-                 "勾 public_repo 或 repo）")
+                 "（在 GitHub → Settings → Developer settings → Personal access tokens 生成，\n"
+                 " 经典 Token 需同时勾选 public_repo（或 repo）+ workflow）")
 
     me = api("/user", args.token)
     owner = me["login"]

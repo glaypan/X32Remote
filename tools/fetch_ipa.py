@@ -15,7 +15,9 @@
   python fetch_ipa.py --repo 你的用户名/X32Remote --wait       # 等构建跑完再下
 
 Token 权限:
-  经典 PAT 勾选 repo（私有仓库）或 public_repo；细粒度 PAT 需要 Actions: Read。
+  经典 PAT 勾 public_repo（公开仓库）或 repo（私有仓库）—— 建私有仓库必须用 repo。
+  若还想推送 .github/workflows/ 下的文件，还需额外勾 workflow（本脚本不需要，push_to_github.py 需要）。
+  细粒度 PAT 需要 Actions: Read（读取构建状态与下载产物）。
 """
 import argparse
 import json
