@@ -135,12 +135,23 @@ public final class ShowEngine: @unchecked Sendable {
 
     // MARK: - 冲突策略
 
+    /// 手动干预的来路。服务端对两种来路用不同措辞，这里保持一致。
+    public enum TakeoverOrigin: Sendable {
+        /// 手机上的操作（App 推子/按键）
+        case local
+        /// 真台面板上的操作（桥接回读时发现）
+        case remote
+    }
+
     /// 判定手动干预。**只冻结被干预的那一路**，卡片其余动作继续跑。
     ///
     /// 返回告警文案（无冲突时返回 nil）。由 `X32Client` 在任何
     /// `source == .manual` 的写入之前调用，也用于真台面板被改动时。
+    ///
+    /// 只冻结被碰的这一路，卡片其余通道与后续动作照常执行。
     @discardableResult
-    public func checkManualTakeover(kind: String, idx: Int) -> String? {
+    public func checkManualTakeover(kind: String, idx: Int,
+                                    origin: TakeoverOrigin = .local) -> String? {
         let k = ShowEngine.key(kind: kind, idx: idx)
         let zone: String
         lock.lock()
@@ -152,7 +163,14 @@ public final class ShowEngine: @unchecked Sendable {
         zone = z
         lock.unlock()
 
-        let text = "⚠️ \(mixer.targetLabel(kind: kind, idx: idx)) 被手动干预 — 卡片「\(zone)」停止驱动该通道，其余动作继续"
+        let label = mixer.targetLabel(kind: kind, idx: idx)
+        let text: String
+        switch origin {
+        case .local:
+            text = "⚠️ \(label) 手动接管 — 卡片「\(zone)」停止驱动该通道，其余动作继续"
+        case .remote:
+            text = "⚠️ 真台上 \(label) 被手动干预 — 卡片「\(zone)」停止驱动该通道，其余动作继续"
+        }
         emit(text)
         return text
     }
@@ -373,13 +391,13 @@ public final class ShowEngine: @unchecked Sendable {
                 setProgress(EngineProgress())
                 return
             }
-            finishChain(card, chainDepth: chainDepth, visited: visited)
+            await finishChain(card, chainDepth: chainDepth, visited: visited, generation: gen)
             return
         }
 
         let entries = makeEntries(card)
         guard !entries.isEmpty else {
-            finishChain(card, chainDepth: chainDepth, visited: visited)
+            await finishChain(card, chainDepth: chainDepth, visited: visited, generation: gen)
             return
         }
 
@@ -400,11 +418,11 @@ public final class ShowEngine: @unchecked Sendable {
                     setStep(card: card, entry: e, totalActions: entries.count)
 
                     if e.duration <= 0.001 {
-                        await execInstant(e.action)
+                        execInstant(e.action)
                         continue
                     }
                     guard e.hasTargets else {
-                        await execInstant(e.action)     // wait：占用时长但不驱动推子
+                        execInstant(e.action)     // wait：占用时长但不驱动推子
                         continue
                     }
                     // fade_from 语义：先把推子置到指定起点，再以此为渐变起点
@@ -448,7 +466,7 @@ public final class ShowEngine: @unchecked Sendable {
             setProgress(EngineProgress())
             return
         }
-        finishChain(card, chainDepth: chainDepth, visited: visited)
+        await finishChain(card, chainDepth: chainDepth, visited: visited, generation: gen)
     }
 
     /// 渐变推进：逐路累加，已被接管的通道跳过
@@ -463,20 +481,31 @@ public final class ShowEngine: @unchecked Sendable {
     }
 
     /// 瞬时动作：静音 / 静音 Bus / 切场景 / 全部取消静音 / 等待
-    private func execInstant(_ a: CardAction) async {
+    private func execInstant(_ a: CardAction) {
         switch a.kind {
         case "mute":
             for c in a.chs { mixer.writeValue(kind: "ch_on", idx: c, value: 0, source: .action) }
         case "mute_bus":
             for b in a.buses { mixer.writeValue(kind: "bus_on", idx: b, value: 0, source: .action) }
         case "unmute_all":
+            // 与服务端一致：ch / bus / dca / auxin / usb / fxret / mtx / main 全部取消静音
             for i in 1...32 { mixer.writeValue(kind: "ch_on", idx: i, value: 1, source: .action) }
             for i in 1...16 { mixer.writeValue(kind: "bus_on", idx: i, value: 1, source: .action) }
+            for i in 1...8 { mixer.writeValue(kind: "dca_on", idx: i, value: 1, source: .action) }
+            for i in 1...6 { mixer.writeValue(kind: "auxin_on", idx: i, value: 1, source: .action) }
+            for i in 1...2 { mixer.writeValue(kind: "usb_on", idx: i, value: 1, source: .action) }
+            for i in 1...8 { mixer.writeValue(kind: "fxret_on", idx: i, value: 1, source: .action) }
+            for i in 1...6 { mixer.writeValue(kind: "mtx_on", idx: i, value: 1, source: .action) }
+            mixer.writeValue(kind: "main_on", idx: 0, value: 1, source: .action)
         case "scene":
             mixer.writeRaw(address: MixerSpec.sceneLoad(a.scene), args: [])
         case "wait":
-            let ns = UInt64(min(max(a.duration, 0.5), 60) * 1_000_000_000)
-            try? await Task.sleep(nanoseconds: ns)
+            // 故意什么都不做。wait 的等待效果完全由时间轴偏移提供
+            // （cursor 会把后续顺序动作的 start 推到 wait 结束之后），
+            // 这里若再 sleep 一次就是双重计时：不仅总时长翻倍，
+            // 还会在 sleep 期间冻结 tick 循环，把并行动作和正在跑的渐变一起卡住。
+            // 服务端 _exec_instant 同样没有 wait 分支。
+            break
         default:
             break
         }
@@ -509,14 +538,23 @@ public final class ShowEngine: @unchecked Sendable {
         unregisterFade(targets)
     }
 
-    private func finishChain(_ card: TimelineCard, chainDepth: Int, visited: Set<String>) {
-        if !shouldStopAfterChain,
-           let nxt = card.next, !nxt.isEmpty, nxt != card.id, self.card(id: nxt) != nil {
-            setProgress(EngineProgress(runningId: card.id, name: card.name, progress: 1))
-            run(cardId: nxt, chainDepth: chainDepth + 1, visited: visited)
+    private func finishChain(_ card: TimelineCard, chainDepth: Int, visited: Set<String>,
+                             generation gen: Int) async {
+        guard !shouldStopAfterChain,
+              let nxt = card.next, !nxt.isEmpty, nxt != card.id,
+              self.card(id: nxt) != nil else {
+            setProgress(EngineProgress())
             return
         }
-        setProgress(EngineProgress())
+        setProgress(EngineProgress(runningId: card.id, name: card.name, progress: 1))
+        // 卡片之间留 0.4 秒喘息（对齐服务端 time.sleep(0.4)），
+        // 让台面与界面都看清楚一次切换；期间被停止则不再接续。
+        try? await Task.sleep(nanoseconds: 400_000_000)
+        guard isActive(gen), !shouldStopAfterChain else {
+            setProgress(EngineProgress())
+            return
+        }
+        run(cardId: nxt, chainDepth: chainDepth + 1, visited: visited)
     }
 
     // MARK: - 进度与事件

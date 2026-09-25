@@ -387,15 +387,66 @@ final class ShowExecutionTests: XCTestCase {
         XCTAssertEqual(mixer.rawAddresses, ["/scene/7/load"])
     }
 
-    func testUnmuteAllTouchesChannelsAndBuses() async {
+    /// unmute_all 覆盖全部分组（对齐服务端 _exec_instant），共 79 路：
+    /// 32 ch + 16 bus + 8 dca + 6 auxin + 2 usb + 8 fxret + 6 mtx + 1 main
+    func testUnmuteAllTouchesEveryGroup() async {
         let mixer = MockMixer()
         let card = TimelineCard(id: "c", name: "c", actions: [CardAction(kind: "unmute_all")])
         let engine = makeEngine(mixer, [card])
         engine.run(cardId: "c")
         await waitIdle(engine)
 
-        XCTAssertEqual(mixer.writes.filter { $0.kind == "ch_on" }.count, 32)
-        XCTAssertEqual(mixer.writes.filter { $0.kind == "bus_on" }.count, 16)
+        func count(_ kind: String) -> Int { mixer.writes.filter { $0.kind == kind }.count }
+        XCTAssertEqual(count("ch_on"), 32)
+        XCTAssertEqual(count("bus_on"), 16)
+        XCTAssertEqual(count("dca_on"), 8)
+        XCTAssertEqual(count("auxin_on"), 6)
+        XCTAssertEqual(count("usb_on"), 2)
+        XCTAssertEqual(count("fxret_on"), 8)
+        XCTAssertEqual(count("mtx_on"), 6)
+        XCTAssertEqual(count("main_on"), 1)
+        XCTAssertEqual(mixer.writes.count, 79)
+
+        // 全部为"取消静音"，且都标为卡片写入（不触发冲突检测）
+        XCTAssertTrue(mixer.writes.allSatisfy { $0.value == 1 && $0.source == .action })
+
+        // main 的 idx 固定为 0
+        XCTAssertEqual(mixer.writes.last?.idx, 0)
+        XCTAssertEqual(mixer.writes.last?.kind, "main_on")
+    }
+
+    /// wait 只是占用时间轴，本身不做任何写入、更不能阻塞 tick 循环。
+    ///
+    /// 服务端的 _exec_instant 没有 wait 分支：等待效果完全由 cursor 偏移提供。
+    /// 这里把 mute 放在 wait 之前、用 at:0 与 wait 并行 —— 若 wait 内部真的 sleep，
+    /// 同一次迭代里排在它后面的 mute 就会被推迟到 sleep 结束之后才执行。
+    func testWaitDoesNotBlockParallelActions() async {
+        let mixer = MockMixer()
+        let card = TimelineCard(id: "c", name: "c", actions: [
+            CardAction(kind: "wait", duration: 3),
+            CardAction(kind: "mute", chs: [7], at: 0),
+        ])
+        let engine = makeEngine(mixer, [card])
+        engine.run(cardId: "c")
+
+        // at:0 的 mute 应在第一个 tick 内就发出，远早于 3 秒的 wait 结束
+        let fired = await waitUntil(1.5) { mixer.writes.contains { $0.kind == "ch_on" } }
+        XCTAssertTrue(fired, "wait 阻塞了并行动作：mute 在 1.5 秒内未执行")
+        XCTAssertEqual(mixer.writes.first?.idx, 7)
+
+        engine.stopAll()
+        await waitIdle(engine, timeout: 3)
+    }
+
+    func testWaitWritesNothing() async {
+        let mixer = MockMixer()
+        let card = TimelineCard(id: "c", name: "c", actions: [CardAction(kind: "wait", duration: 1)])
+        let engine = makeEngine(mixer, [card])
+        engine.run(cardId: "c")
+        await waitIdle(engine, timeout: 5)
+
+        XCTAssertTrue(mixer.writes.isEmpty, "wait 不应产生任何写入")
+        XCTAssertTrue(mixer.rawAddresses.isEmpty, "wait 不应发送任何原始 OSC")
     }
 
     /// rel_db 按 dB 差量换算：0 dB 位置整体 +3 dB
@@ -542,6 +593,33 @@ final class ShowConflictTests: XCTestCase {
         XCTAssertNotNil(engine.checkManualTakeover(kind: "ch_fader", idx: 1))
         XCTAssertNil(engine.checkManualTakeover(kind: "ch_fader", idx: 1), "同一路只告警一次")
         engine.stopAll()
+    }
+
+    /// 两种来路措辞不同（对齐服务端）：手机上是"手动接管"，真台面板上是"真台上 … 被手动干预"
+    func testTakeoverMessageDiffersByOrigin() async {
+        func drivenEngine() -> ShowEngine {
+            let mixer = MockMixer()
+            let card = TimelineCard(id: "c", name: "c", actions: [
+                CardAction(kind: "fade_ch", chs: [1, 2], to: 1, duration: 3)
+            ])
+            let engine = makeEngine(mixer, [card])
+            engine.run(cardId: "c")
+            return engine
+        }
+
+        let localEngine = drivenEngine()
+        _ = await waitUntil(2) { localEngine.isDriven(kind: "ch_fader", idx: 1) }
+        let local = localEngine.checkManualTakeover(kind: "ch_fader", idx: 1, origin: .local)
+        XCTAssertTrue(local?.contains("手动接管") ?? false, "实际: \(local ?? "nil")")
+        XCTAssertFalse(local?.contains("真台上") ?? false, "实际: \(local ?? "nil")")
+        localEngine.stopAll()
+
+        let remoteEngine = drivenEngine()
+        _ = await waitUntil(2) { remoteEngine.isDriven(kind: "ch_fader", idx: 1) }
+        let remote = remoteEngine.checkManualTakeover(kind: "ch_fader", idx: 1, origin: .remote)
+        XCTAssertTrue(remote?.contains("真台上") ?? false, "实际: \(remote ?? "nil")")
+        XCTAssertTrue(remote?.contains("被手动干预") ?? false, "实际: \(remote ?? "nil")")
+        remoteEngine.stopAll()
     }
 }
 

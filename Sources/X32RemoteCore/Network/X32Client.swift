@@ -118,9 +118,9 @@ public final class X32Client: @unchecked Sendable, MixerWriting {
     public func send(_ message: OscMessage, source: WriteSource = .manual) {
         let target = OscAddressParser.parse(message.address)
 
-        // 1) 手动接管检查（卡片驱动中的通道被用户抢走）
+        // 1) 手动接管检查（卡片驱动中的通道被用户在手机上抢走）
         if source.triggersConflictCheck, let target {
-            showEngine?.checkManualTakeover(kind: target.kind, idx: target.idx)
+            showEngine?.checkManualTakeover(kind: target.kind, idx: target.idx, origin: .local)
         }
 
         guard let c = connection else { return }
@@ -196,7 +196,7 @@ public final class X32Client: @unchecked Sendable, MixerWriting {
         if let target = OscAddressParser.parse(m.address),
            let value = OscAddressParser.numericValue(m),
            bridge.classify(kind: target.kind, idx: target.idx, value: value) == .remoteChange {
-            showEngine?.checkManualTakeover(kind: target.kind, idx: target.idx)
+            showEngine?.checkManualTakeover(kind: target.kind, idx: target.idx, origin: .remote)
         }
 
         apply(m)
