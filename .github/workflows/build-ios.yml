@@ -1,0 +1,133 @@
+name: Build Unsigned iOS IPA
+
+# 在免费 Apple ID 真机直装（7 天重签）方案中，本 workflow 只负责一件事：
+#   用 GitHub 的 macOS runner 把工程编译成「无签名 IPA」，
+#   再由本机用 Sideloadly 以你的 Apple ID 签名安装。
+# 本机没有 Mac，所以这一步必须借 macOS runner 完成。
+
+on:
+  workflow_dispatch:          # 手动触发（推荐，省额度）
+  push:
+    branches: [ main ]
+    paths-ignore:             # 只改文档不必重新编译
+      - '**.md'
+
+jobs:
+  build:
+    name: Build & Package IPA
+    runs-on: macos-14          # Apple Silicon runner，构建最快
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: |
+          set -e
+          XC=$(ls -d /Applications/Xcode_15*.app 2>/dev/null | sort -V | tail -1 || true)
+          if [ -z "$XC" ]; then XC=/Applications/Xcode.app; fi
+          echo "使用 $XC"
+          sudo xcode-select -s "$XC"
+          xcodebuild -version
+          echo "--- 可用模拟器 SDK ---"
+          xcodebuild -showsdks | grep -i iphoneos || true
+
+      - name: Run core unit tests (SPM, 非阻塞)
+        continue-on-error: true
+        run: |
+          echo "在 macOS host 上直接跑核心库单测（不需要模拟器）"
+          swift test --parallel 2>&1 | tail -40
+
+      - name: Build app (unsigned)
+        run: |
+          set -e
+          xcodebuild \
+            -project X32Remote.xcodeproj \
+            -scheme X32Remote \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath "$RUNNER_TEMP/dd" \
+            -destination 'generic/platform=iOS' \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGN_ENTITLEMENTS="" \
+            COMPILER_INDEX_STORE_ENABLE=NO \
+            build
+
+      - name: Locate .app
+        id: locate
+        run: |
+          set -e
+          APP=$(find "$RUNNER_TEMP/dd/Build/Products" -maxdepth 2 -name "*.app" -type d | head -1)
+          if [ -z "$APP" ]; then
+            echo "::error::未找到 .app 产物"
+            find "$RUNNER_TEMP/dd/Build/Products" -maxdepth 3 | head -50
+            exit 1
+          fi
+          echo "找到: $APP"
+          echo "app_path=$APP" >> "$GITHUB_OUTPUT"
+          echo "app_name=$(basename "$APP")" >> "$GITHUB_OUTPUT"
+
+      - name: Inspect app bundle
+        run: |
+          APP="${{ steps.locate.outputs.app_path }}"
+          echo "=== 结构 ==="
+          ls -la "$APP"
+          echo
+          echo "=== 架构 (应为 arm64) ==="
+          lipo -info "$APP/$(basename "$APP" .app)" 2>/dev/null || file "$APP"/*
+          echo
+          echo "=== Info.plist 关键项 ==="
+          /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$APP/Info.plist" || true
+          /usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$APP/Info.plist" || true
+          /usr/libexec/PlistBuddy -c "Print :MinimumOSVersion" "$APP/Info.plist" || true
+          /usr/libexec/PlistBuddy -c "Print :NSLocalNetworkUsageDescription" "$APP/Info.plist" || true
+
+      - name: Package into unsigned IPA
+        run: |
+          set -e
+          APP="${{ steps.locate.outputs.app_path }}"
+          APP_NAME="${{ steps.locate.outputs.app_name }}"
+          WORK="$RUNNER_TEMP/ipa"
+          rm -rf "$WORK"; mkdir -p "$WORK/Payload"
+          cp -R "$APP" "$WORK/Payload/"
+          cd "$WORK"
+          # IPA 本质就是一个含 Payload/ 目录的 zip
+          zip -qry "X32Remote-unsigned.ipa" Payload
+          ls -lh "X32Remote-unsigned.ipa"
+          echo "--- 校验包内结构 ---"
+          unzip -l "X32Remote-unsigned.ipa" | head -15
+          # 供后续步骤引用
+          echo "ipa=$WORK/X32Remote-unsigned.ipa" >> "$GITHUB_ENV"
+
+      - name: Remove stale signature (确保干净)
+        run: |
+          # 打出来的包本来就没签名，这里只是明确确认，避免 Sideloadly 误判
+          cd "$RUNNER_TEMP/ipa"
+          rm -rf Payload/*.app/_CodeSignature 2>/dev/null || true
+          rm -f Payload/*.app/embedded.mobileprovision 2>/dev/null || true
+          rm -f X32Remote-unsigned.ipa
+          zip -qry X32Remote-unsigned.ipa Payload
+          ls -lh X32Remote-unsigned.ipa
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: X32Remote-unsigned-ipa
+          path: ${{ env.ipa }}
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Summary
+        run: |
+          {
+            echo "## 构建完成"
+            echo ""
+            echo "- 产物: \`X32Remote-unsigned-ipa\`（含 X32Remote-unsigned.ipa）"
+            echo "- 架构: arm64（真机）"
+            echo "- Bundle ID: com.example.X32Remote"
+            echo "- 部署目标: iOS 15.0+"
+            echo ""
+            echo "下一步：在本机运行 \`fetch_ipa.py\` 下载并自动解包，再用 Sideloadly 签名安装。"
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,30 @@
+# ---- macOS ----
+.DS_Store
+._*
+
+# ---- Xcode ----
+build/
+DerivedData/
+*.xcuserstate
+xcuserdata/
+*.moved-aside
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+*.xccheckout
+*.xcscmblueprint
+
+# 保留工程与 scheme，只忽略个人窗口状态
+X32Remote.xcodeproj/project.xcworkspace/xcuserdata/
+X32Remote.xcodeproj/xcuserdata/
+
+# ---- SwiftPM ----
+.build/
+.swiftpm/
+# 本地包无外部依赖，锁文件无意义
+Package.resolved
+
+# ---- 产物 / 日志 ----
+*.zip
+*.log
