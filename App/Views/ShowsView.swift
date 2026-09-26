@@ -20,7 +20,10 @@ struct ShowsView: View {
                             showCardRow(card)
                         }
                         .onDelete { indices in
-                            for i in indices { appModel.deleteShowCard(appModel.showCards[i]) }
+                            let victims = indices.map { appModel.showCards[$0] }
+                            Task { @MainActor in
+                                for card in victims { appModel.deleteShowCard(card) }
+                            }
                         }
                     }
                 }
@@ -47,7 +50,7 @@ struct ShowsView: View {
                 Button("Create") {
                     let name = newCardName.trimmingCharacters(in: .whitespaces)
                     guard !name.isEmpty else { return }
-                    appModel.addShowCard(name: name)
+                    Task { @MainActor in appModel.addShowCard(name: name) }
                 }
             } message: {
                 Text("Enter a name for the new show")
@@ -175,7 +178,7 @@ struct ShowsView: View {
                 Spacer()
                 Text("\(Int(appModel.cardProgress.progress * 100))%")
                     .font(.caption2.monospacedDigit()).foregroundColor(.secondary)
-                Button("停止") { appModel.stopShow() }
+                Button("停止") { Task { @MainActor in appModel.stopShow() } }
                     .font(.caption2)
                     .padding(.leading, 6)
             }
@@ -207,7 +210,7 @@ private struct ExecuteButton: View {
 
     var body: some View {
         Button {
-            appModel.runShowCard(card)
+            Task { @MainActor in appModel.runShowCard(card) }
         } label: {
             Label("Run", systemImage: "play.fill")
                 .font(.caption.bold())

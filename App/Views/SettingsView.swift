@@ -27,7 +27,7 @@ struct SettingsView: View {
                 Section {
                     if appModel.isConnected {
                         Button("断开连接", role: .destructive) {
-                            appModel.disconnect()
+                            Task { @MainActor in appModel.disconnect() }
                         }
                     } else {
                         Button("连接") {

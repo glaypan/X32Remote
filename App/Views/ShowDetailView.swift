@@ -26,7 +26,7 @@ struct ShowDetailView: View {
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button("保存") {
-                    appModel.updateShowCard(editingCard)
+                    Task { @MainActor in appModel.updateShowCard(editingCard) }
                     hasChanges = false
                 }
                 .fontWeight(.semibold)
