@@ -575,7 +575,12 @@ final class ShowConflictTests: XCTestCase {
         XCTAssertLessThan(mixer.readFader(kind: "ch_fader", idx: 1), 0.9)
         // 另一路照常跑完
         XCTAssertEqual(mixer.readFader(kind: "ch_fader", idx: 2), 1, accuracy: 0.03)
-        XCTAssertTrue(warnings.all.contains { $0.contains("手动干预") })
+        // 上面的 checkManualTakeover 用的是默认来路 .local —— 按规范 §9.5，
+        // 手机/网页来路的文案是「手动接管」；「被手动干预」是 .remote（真台面板）的文案，
+        // 由 testTakeoverMessageDiffersByOrigin 专门覆盖。这里曾错写成「手动干预」，
+        // 断言从写下来就没通过过（CI 单测步骤当年从未真正执行，被 continue-on-error 掩盖）。
+        XCTAssertTrue(warnings.all.contains { $0.contains("手动接管") },
+                      "默认 .local 来路文案应为「手动接管」，实际: \(warnings.all)")
     }
 
     func testTakeoverIsReportedOnlyOncePerChannel() async {
