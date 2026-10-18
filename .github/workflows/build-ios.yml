@@ -38,9 +38,15 @@ jobs:
         continue-on-error: true
         run: |
           set -o pipefail
-          # ⚠️ Package.swift 在 X32Remote-ios/ 子目录下，必须在正确的工作目录执行，
-          #    否则 SPM 找不到包、这一步会静默失败（曾经就是这样）。
-          cd X32Remote-ios
+          # ⚠️ 本仓库根目录就是 iOS 工程（Package.swift 在根），没有 X32Remote-ios/ 子目录。
+          #    早先的子目录布局已变，写死的 `cd X32Remote-ios` 会直接失败 —— 而它被
+          #    continue-on-error 掩盖成「成功」，单测其实一次都没跑过（假成功）。
+          #    现在：按布局条件进入 + 找不到 Package.swift 就明确报错。
+          if [ -d X32Remote-ios ]; then cd X32Remote-ios; fi
+          if [ ! -f Package.swift ]; then
+            echo "::error::找不到 Package.swift（工作目录 $(pwd)）—— 单测未执行"
+            exit 1
+          fi
           echo "工作目录: $(pwd)"
           swift --version
           swift test 2>&1 | tee "$RUNNER_TEMP/tests.log" | tail -80
