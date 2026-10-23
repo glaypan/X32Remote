@@ -14,6 +14,7 @@
 		A10000050000000000000010 /* FaderRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000050000000000000010 /* FaderRow.swift */; };
 		A10000060000000000000010 /* X32RemoteCore in Frameworks */ = {isa = PBXBuildFile; productRef = A30000010000000000000010 /* X32RemoteCore */; };
 		A10000070000000000000010 /* ChannelsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000060000000000000010 /* ChannelsView.swift */; };
+		A10000100000000000000001 /* RiderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000F0000000000000001 /* RiderView.swift */; };
 		A10000080000000000000010 /* DcaView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000070000000000000010 /* DcaView.swift */; };
 		A10000090000000000000010 /* ShowsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000080000000000000010 /* ShowsView.swift */; };
 		A100000B0000000000000001 /* ChannelDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200000A0000000000000001 /* ChannelDetailView.swift */; };
@@ -32,6 +33,7 @@
 		A20000040000000000000010 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		A20000050000000000000010 /* FaderRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FaderRow.swift; sourceTree = "<group>"; };
 A20000060000000000000010 /* ChannelsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChannelsView.swift; sourceTree = "<group>"; };
+A200000F0000000000000001 /* RiderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RiderView.swift; sourceTree = "<group>"; };
 		A20000070000000000000010 /* DcaView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DcaView.swift; sourceTree = "<group>"; };
 		A20000080000000000000010 /* ShowsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShowsView.swift; sourceTree = "<group>"; };
 		A20000090000000000000010 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -80,6 +82,7 @@ A20000060000000000000010 /* ChannelsView.swift */ = {isa = PBXFileReference; las
 					A20000030000000000000010 /* RootTabView.swift */,
 					A20000040000000000000010 /* SettingsView.swift */,
 					A20000060000000000000010 /* ChannelsView.swift */,
+					A200000F0000000000000001 /* RiderView.swift */,
 					A20000070000000000000010 /* DcaView.swift */,
 					A20000080000000000000010 /* ShowsView.swift */,
 					A200000A0000000000000001 /* ChannelDetailView.swift */,
@@ -188,6 +191,7 @@ A20000060000000000000010 /* ChannelsView.swift */ = {isa = PBXFileReference; las
 			A10000040000000000000010 /* SettingsView.swift in Sources */,
 			A10000050000000000000010 /* FaderRow.swift in Sources */,
 			A10000070000000000000010 /* ChannelsView.swift in Sources */,
+			A10000100000000000000001 /* RiderView.swift in Sources */,
 			A10000080000000000000010 /* DcaView.swift in Sources */,
 			A10000090000000000000010 /* ShowsView.swift in Sources */,
 			A100000B0000000000000001 /* ChannelDetailView.swift in Sources */,
@@ -326,7 +330,7 @@ A20000060000000000000010 /* ChannelsView.swift */ = {isa = PBXFileReference; las
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 3;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -341,7 +345,7 @@ A20000060000000000000010 /* ChannelsView.swift */ = {isa = PBXFileReference; las
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.1.0;
+				MARKETING_VERSION = 1.2.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.example.X32Remote;
 				PRODUCT_NAME = "X32 Remote";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
@@ -359,7 +363,7 @@ A20000060000000000000010 /* ChannelsView.swift */ = {isa = PBXFileReference; las
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 3;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -374,7 +378,7 @@ A20000060000000000000010 /* ChannelsView.swift */ = {isa = PBXFileReference; las
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.1.0;
+				MARKETING_VERSION = 1.2.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.example.X32Remote;
 				PRODUCT_NAME = "X32 Remote";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";

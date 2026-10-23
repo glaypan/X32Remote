@@ -24,6 +24,11 @@ struct RootTabView: View {
                 .tabItem {
                     Label("演出", systemImage: "play.circle")
                 }
+
+            RiderView()
+                .tabItem {
+                    Label("自动", systemImage: "waveform.path.ecg")
+                }
             
             SettingsView()
                 .tabItem {
