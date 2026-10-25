@@ -3,12 +3,27 @@ import X32RemoteCore
 
 struct SettingsView: View {
     @Environment(AppModel.self) private var appModel
+    @State private var scanOpen = false
+    @State private var scanError: String?
 
     var body: some View {
         @Bindable var model = appModel
 
         NavigationStack {
             Form {
+                Section {
+                    Button {
+                        scanOpen = true
+                    } label: {
+                        Label("扫码连接", systemImage: "qrcode.viewfinder")
+                    }
+                    Text("电脑端「设置 → 手机连接」里有二维码：扫 App 那张会带上 OSC 端口；扫浏览器那张按默认 10023 连。")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                } header: {
+                    Text("快速连接")
+                }
+
                 Section("调音台连接") {
                     TextField("IP 地址", text: $model.mixerIP)
                         .keyboardType(.decimalPad)
@@ -116,7 +131,33 @@ struct SettingsView: View {
                 }
             }
             .navigationTitle("设置")
+            .sheet(isPresented: $scanOpen) {
+                QRScannerView(onCode: handleScan, onClose: { scanOpen = false })
+                    .ignoresSafeArea()
+            }
+            .alert("无法识别的二维码", isPresented: Binding(
+                get: { scanError != nil },
+                set: { if !$0 { scanError = nil } }
+            )) {
+                Button("好", role: .cancel) { scanError = nil }
+            } message: {
+                Text(scanError ?? "")
+            }
         }
+    }
+
+    // MARK: - 扫码
+
+    /// 扫到即连：识别失败**不改**当前 IP/端口 —— 半截地址比不连更让人困惑
+    private func handleScan(_ raw: String) {
+        scanOpen = false
+        guard let code = PairCode.parse(raw) else {
+            scanError = "这张码不是 X32 Remote 的连接码。\n请对准电脑端「手机连接」里的二维码，或返回手动填 IP。"
+            return
+        }
+        appModel.mixerIP = code.host
+        appModel.mixerPort = UInt16(clamping: code.oscPort)
+        Task { await appModel.connect() }
     }
 
     // MARK: - 桥接模式
