@@ -36,6 +36,15 @@
 A20000060000000000000010 /* ChannelsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChannelsView.swift; sourceTree = "<group>"; };
 A200000F0000000000000001 /* RiderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RiderView.swift; sourceTree = "<group>"; };
 		A200000F0000000000000002 /* QRScannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QRScannerView.swift; sourceTree = "<group>"; };
+		A200000F0000000000000003 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		A50000100000000000000010 /* Supporting */ = {
+			isa = PBXGroup;
+			children = (
+				A200000F0000000000000003 /* Info.plist */,
+			);
+			path = Supporting;
+			sourceTree = "<group>";
+		};
 		A20000070000000000000010 /* DcaView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DcaView.swift; sourceTree = "<group>"; };
 		A20000080000000000000010 /* ShowsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShowsView.swift; sourceTree = "<group>"; };
 		A20000090000000000000010 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -74,6 +83,7 @@ A200000F0000000000000001 /* RiderView.swift */ = {isa = PBXFileReference; lastKn
 				A50000030000000000000010 /* Views */,
 				A50000040000000000000010 /* Components */,
 				A20000090000000000000010 /* Assets.xcassets */,
+				A50000100000000000000010 /* Supporting */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -84,8 +94,8 @@ A200000F0000000000000001 /* RiderView.swift */ = {isa = PBXFileReference; lastKn
 					A20000030000000000000010 /* RootTabView.swift */,
 					A20000040000000000000010 /* SettingsView.swift */,
 					A20000060000000000000010 /* ChannelsView.swift */,
-					A200000F0000000000000001 /* RiderView.swift */,
-					A200000F0000000000000002 /* QRScannerView.swift */,
+						A200000F0000000000000001 /* RiderView.swift */,
+						A200000F0000000000000002 /* QRScannerView.swift */,
 					A20000070000000000000010 /* DcaView.swift */,
 					A20000080000000000000010 /* ShowsView.swift */,
 					A200000A0000000000000001 /* ChannelDetailView.swift */,
@@ -334,10 +344,11 @@ A200000F0000000000000001 /* RiderView.swift */ = {isa = PBXFileReference; lastKn
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 4;
+				CURRENT_PROJECT_VERSION = 5;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "App/Supporting/Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "X32 Remote";
 				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "需要访问本地网络以连接 X32/M32 调音台";
 				INFOPLIST_KEY_NSCameraUsageDescription = "扫码连接电脑端服务，需要访问相机";
@@ -350,7 +361,7 @@ A200000F0000000000000001 /* RiderView.swift */ = {isa = PBXFileReference; lastKn
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.3.0;
+				MARKETING_VERSION = 1.3.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.example.X32Remote;
 				PRODUCT_NAME = "X32 Remote";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
@@ -368,10 +379,11 @@ A200000F0000000000000001 /* RiderView.swift */ = {isa = PBXFileReference; lastKn
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 4;
+				CURRENT_PROJECT_VERSION = 5;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "App/Supporting/Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "X32 Remote";
 				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "需要访问本地网络以连接 X32/M32 调音台";
 				INFOPLIST_KEY_NSCameraUsageDescription = "扫码连接电脑端服务，需要访问相机";
@@ -384,7 +396,7 @@ A200000F0000000000000001 /* RiderView.swift */ = {isa = PBXFileReference; lastKn
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.3.0;
+				MARKETING_VERSION = 1.3.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.example.X32Remote;
 				PRODUCT_NAME = "X32 Remote";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";

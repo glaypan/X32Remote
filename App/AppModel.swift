@@ -38,6 +38,9 @@ final class AppModel {
     var discoveredMixers: [DiscoveredMixer] = []
     var isDiscovering = false
 
+    /// 扫码 / 深度链接的结果提示（RootTabView 统一弹窗展示）
+    var deepLinkNotice: DeepLinkNotice?
+
     /// Main LR 在 channels 列表中使用的虚拟 ID
     static let mainChannelId = 33
 
@@ -647,6 +650,31 @@ final class AppModel {
         }
         return cards
     }
+
+    // MARK: - 深度链接（系统相机 / 微信扫 x32remote://pair 拉起 App）
+
+    /// 与设置页「扫码连接」共用同一套解析规则（x32sim/pair.py、PairCode.swift 三处对齐）：
+    /// 坏值一律拒绝并提示，绝不猜一个地址去连。
+    /// iOS 在 App 冷启动与已运行时都会回调这里。
+    @MainActor
+    func handleOpenURL(_ url: URL) {
+        guard let code = PairCode.parse(url.absoluteString) else {
+            deepLinkNotice = DeepLinkNotice(
+                title: "无法识别的连接码",
+                message: "这个链接不是 X32 Remote 的配对码（可能是旧版本生成的）。\n请在电脑端重新打开「手机 / 安卓平板连接」页面。"
+            )
+            return
+        }
+        // 用户刚扫了一张新码，直接覆盖当前地址；失败也不回滚（连接状态自己会反映）
+        mixerIP = code.host
+        mixerPort = UInt16(clamping: code.oscPort)
+        deepLinkNotice = DeepLinkNotice(
+            title: "正在连接",
+            message: "已填入 \(code.summary)，正在连接电脑端服务。"
+        )
+        Task { await connect() }
+    }
+
 }
 
 // MARK: - UI State Models
@@ -689,4 +717,14 @@ struct ShowState: Identifiable {
     let id: Int
     var name: String
     var isActive: Bool
+}
+
+// MARK: - 深度链接（系统相机扫 x32remote://pair 拉起 App）
+
+/// 扫码 / 深链结果的弹窗提示。RootTabView 统一展示，
+/// 设置页内的扫码沿用自己那套 alert，两边提示语义保持一致。
+struct DeepLinkNotice: Identical, Equatable {
+    let id = UUID()
+    let title: String
+    let message: String
 }

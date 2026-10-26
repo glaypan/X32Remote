@@ -35,6 +35,18 @@ struct RootTabView: View {
                     Label("设置", systemImage: "gearshape")
                 }
         }
+        // 深度链接结果提示：扫到配对码后无论连没连上，都明确告诉用户发生了什么
+        .alert(
+            appModel.deepLinkNotice?.title ?? "",
+            isPresented: Binding(
+                get: { appModel.deepLinkNotice != nil },
+                set: { if !$0 { appModel.deepLinkNotice = nil } }
+            )
+        ) {
+            Button("好", role: .cancel) { appModel.deepLinkNotice = nil }
+        } message: {
+            Text(appModel.deepLinkNotice?.message ?? "")
+        }
     }
 }
 

@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- 深度链接：系统相机 / 微信扫到 x32remote://pair?... 直接拉起 App。
+	     其余键（CFBundleIdentifier / 版本号 / 权限说明 / 启动屏等）仍由
+	     GENERATE_INFOPLIST_FILE + INFOPLIST_KEY_* 生成，Xcode 会把两份合并。 -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.x32remote.pair</string>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>x32remote</string>
+			</array>
+		</dict>
+	</array>
+</dict>
+</plist>

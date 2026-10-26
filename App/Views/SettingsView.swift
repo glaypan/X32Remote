@@ -20,6 +20,9 @@ struct SettingsView: View {
                     Text("电脑端「设置 → 手机连接」里有二维码：扫 App 那张会带上 OSC 端口；扫浏览器那张按默认 10023 连。")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
+                    Text("也可以用系统相机或微信直接扫 App 那张码 —— 会自动打开本 App 并填好地址。")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
                 } header: {
                     Text("快速连接")
                 }
