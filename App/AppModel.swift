@@ -723,7 +723,7 @@ struct ShowState: Identifiable {
 
 /// 扫码 / 深链结果的弹窗提示。RootTabView 统一展示，
 /// 设置页内的扫码沿用自己那套 alert，两边提示语义保持一致。
-struct DeepLinkNotice: Identical, Equatable {
+struct DeepLinkNotice: Identifiable, Equatable {
     let id = UUID()
     let title: String
     let message: String
