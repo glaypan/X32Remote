@@ -199,6 +199,21 @@ public enum OscAddresses {
         return String(format: "/fx/%d/config/name", fx)
     }
 
+    /// 生成 FX 算法类型地址 (回包是字符串, 如 "HALL")
+    public static func fxType(_ fx: Int) -> String {
+        return String(format: "/fx/%d/type", fx)
+    }
+
+    /// 生成 FX 效果开关地址
+    public static func fxOn(_ fx: Int) -> String {
+        return String(format: "/fx/%d/on", fx)
+    }
+
+    /// 生成 FX 混合比地址 (0..1)
+    public static func fxMix(_ fx: Int) -> String {
+        return String(format: "/fx/%d/mix", fx)
+    }
+
     /// 生成 FX 返回推子地址
     public static func fxFader(_ fx: Int) -> String {
         return String(format: "/rtn/fx/%d/mix/fader", fx)

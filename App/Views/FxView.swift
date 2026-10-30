@@ -7,15 +7,19 @@ struct FxView: View {
         NavigationStack {
             List(Array(appModel.fxProcessors.enumerated()), id: \.element.id) { _, fx in
                 NavigationLink(destination: FxDetailView(fxId: fx.id)) {
-                    HStack {
+                    HStack(spacing: 12) {
                         VStack(alignment: .leading, spacing: 4) {
-                            Text(fx.label)
-                                .font(.headline)
-                            if !fx.params.isEmpty {
-                                Text("\(fx.params.count) 参数")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
+                            HStack(spacing: 6) {
+                                Text(fx.label)
+                                    .font(.headline)
+                                // 算法开关小圆点: 绿 = 启用, 灰 = 关闭 (v1.6 起真台有 /fx/<n>/on)
+                                Circle()
+                                    .fill(fx.isOn ? Color.green : Color(.systemGray3))
+                                    .frame(width: 8, height: 8)
                             }
+                            Text(rowSubtitle(fx))
+                                .font(.caption)
+                                .foregroundColor(.secondary)
                         }
                         Spacer()
                         FaderPreview(level: fx.level, isMuted: fx.isMuted)
@@ -26,6 +30,17 @@ struct FxView: View {
             }
             .navigationTitle("效果器")
         }
+    }
+
+    /// 副标题: 算法中文名 + 参数个数。未装载/未知算法各有说法。
+    private func rowSubtitle(_ fx: FxUI) -> String {
+        guard fx.algoType != nil else {
+            return fx.params.isEmpty ? "未装载" : "未知算法 · \(fx.params.count) 参数"
+        }
+        var s = fx.algoLabel
+        if fx.paramCount > 0 { s += " · \(fx.paramCount) 参数" }
+        if !fx.isOn { s += " · 已关闭" }
+        return s
     }
 }
 

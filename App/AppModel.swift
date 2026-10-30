@@ -355,7 +355,8 @@ final class AppModel {
         let sortedFxKeys = remoteState.fxs.keys.sorted()
         fxProcessors = sortedFxKeys.compactMap { key in
             guard let fx = remoteState.fxs[key] else { return nil }
-            return FxUI(id: fx.index, label: fx.displayName, level: Float(fx.fader), isMuted: fx.mute, params: fx.params)
+            return FxUI(id: fx.index, label: fx.displayName, level: Float(fx.fader), isMuted: fx.mute,
+                        params: fx.params, algoType: fx.algoType, isOn: fx.on, mix: fx.mix)
         }
     }
 
@@ -441,8 +442,14 @@ final class AppModel {
         client.send(OscMessage(address: osc.fxFader(fxId)))
         client.send(OscMessage(address: osc.fxMute(fxId)))
         client.send(OscMessage(address: osc.fxName(fxId)))
-        // 查询 8 个参数
-        for p in 1...8 {
+        // 槽级三件套: 算法/开关/混合比 (v1.6 起参数面板按算法渲染, 没有 type 就是瞎子)
+        client.send(OscMessage(address: osc.fxType(fxId)))
+        client.send(OscMessage(address: osc.fxOn(fxId)))
+        client.send(OscMessage(address: osc.fxMix(fxId)))
+        // 参数个数随算法变 (HALL 12 个, GEQ2 多达 64 个) —— 按标定表查,
+        // 查不到的算法 (真台上装了本库没有的效果) 保守问前 8 个
+        let n = fxProcessors.first(where: { $0.id == fxId })?.algoSpec?.n ?? 8
+        for p in 1...n {
             client.send(OscMessage(address: osc.fxParam(fxId, p)))
         }
     }
@@ -461,9 +468,55 @@ final class AppModel {
         client?.send(OscMessage(address: OscAddresses.fxMute(fxId), args: [.int(isMuted ? 0 : 1)]))
     }
 
-    func setFxParam(_ fxId: Int, param: String, value: Double) {
-        guard let paramNum = Int(param) else { return }
-        client?.send(OscMessage(address: OscAddresses.fxParam(fxId, paramNum), args: [.float(Float(value))]))
+    /// 切换算法 (真台枚举名, 如 "GEQ")。heavy 算法只能进 FX1-4 —— 本地先拦一道,
+    /// 别等真台拒绝 (它也不会回错误, 写就写了)。
+    @MainActor
+    func setFxType(_ fxId: Int, algo: String) {
+        guard let lib = FxCalibrationStore.shared else { return }
+        guard lib.slotAllows(fxId, algo) || algo.isEmpty else { return }
+        guard let index = fxProcessors.firstIndex(where: { $0.id == fxId }) else { return }
+        fxProcessors[index].algoType = algo.isEmpty ? nil : algo
+        client?.send(OscMessage(address: OscAddresses.fxType(fxId), args: [.string(algo)]))
+        // 换算法后参数全变: 旧值作废, 按新算法重新问一遍
+        fxProcessors[index].params = [:]
+        queryFxDetail(fxId)
+    }
+
+    @MainActor
+    func setFxOn(_ fxId: Int, on: Bool) {
+        guard let index = fxProcessors.firstIndex(where: { $0.id == fxId }) else { return }
+        fxProcessors[index].isOn = on
+        client?.send(OscMessage(address: OscAddresses.fxOn(fxId), args: [.int(on ? 1 : 0)]))
+    }
+
+    @MainActor
+    func setFxMix(_ fxId: Int, mix: Double) {
+        guard let index = fxProcessors.firstIndex(where: { $0.id == fxId }) else { return }
+        fxProcessors[index].mix = min(max(mix, 0), 1)
+        client?.send(OscMessage(address: OscAddresses.fxMix(fxId),
+                                args: [.float(Float(min(max(mix, 0), 1)))]))
+    }
+
+    /// 写一个算法参数。field 走标定表解析 (算法 field / parNN / 语义别名),
+    /// 枚举参数线上发 int, 数值参数发 float —— 与真台一致。
+    func setFxParam(_ fxId: Int, field: String, value: Double) {
+        guard let fx = fxProcessors.first(where: { $0.id == fxId }),
+              let algo = fx.algoType,
+              let lib = FxCalibrationStore.shared else { return }
+        // 未知算法 (真台装了本库没有的效果): 没有标定就没有量程, 按通用 0-1 写。
+        // 至少保留旧版通用滑杆的能力, 不至于整个槽变哑巴; 越界值真台自己会钳。
+        if lib.algo(algo) == nil {
+            let digits = field.hasPrefix("par") ? String(field.dropFirst(3)) : field
+            guard let n = Int(digits), (1...64).contains(n) else { return }
+            let v = min(max(value.isFinite ? value : 0, 0), 1)
+            client?.send(OscMessage(address: OscAddresses.fxParam(fxId, n), args: [.float(Float(v))]))
+            return
+        }
+        guard let pnum = lib.fieldToPar(algo, field),
+              let spec = lib.algo(algo)?.params.first(where: { $0.p == pnum }) else { return }
+        let v = spec.clamp(value)
+        client?.send(OscMessage(address: OscAddresses.fxParam(fxId, pnum),
+                                args: spec.isEnum ? .int(Int(v.rounded())) : .float(Float(v))]))
     }
 
     // MARK: - Channel Detail Query
@@ -711,6 +764,21 @@ struct FxUI: Identifiable {
     var level: Float
     var isMuted: Bool
     var params: [String: Double]
+    /// v1.6 效果库全量标定后新增的三个槽级字段。
+    /// algoType = 真台枚举名 (HALL/GEQ/P1A…), 参数面板按它查标定表渲染。
+    var algoType: String?
+    var isOn: Bool = true
+    var mix: Double = 0.25
+
+    /// 该槽算法的标定 (未装载/未知算法 → nil)
+    var algoSpec: FxAlgoSpec? {
+        guard let t = algoType else { return nil }
+        return FxCalibrationStore.shared?.algo(t)
+    }
+    /// 算法中文名 (未知算法时回落真台枚举名)
+    var algoLabel: String { algoSpec?.label ?? algoType ?? "未装载" }
+    /// 参数个数 (按标定表; 没有标定就按已读到的 params 数)
+    var paramCount: Int { algoSpec?.n ?? params.count }
 }
 
 struct ShowState: Identifiable {

@@ -92,6 +92,38 @@ final class RemoteStateTests: XCTestCase {
         XCTAssertEqual(decoded, state)
     }
 
+    // MARK: - FX 槽状态测试 (v1.6 效果库全量标定新增字段)
+
+    func testFxStateDefaults() {
+        let fx = FxState(index: 3)
+        XCTAssertNil(fx.algoType, "没查过 /fx/3/type 就不知道装了什么, 别猜")
+        XCTAssertTrue(fx.on, "默认按启用渲染, 免得界面谎报关闭")
+        XCTAssertEqual(fx.mix, 0.25)
+        XCTAssertTrue(fx.params.isEmpty)
+        XCTAssertEqual(fx.displayName, "FX 3")
+    }
+
+    func testFxStateParamKeyFormat() {
+        // X32Client 按 OSC 原始段存参数 (两位补零字符串 "01"…"12")。
+        // FxDetailView 读值用 String(format: "%02d", spec.p) 与之配对 ——
+        // 这个约定三处 (写入/读取/服务端) 必须一致, 这里锁死。
+        var fx = FxState(index: 1)
+        fx.params["01"] = 0.5
+        fx.params["12"] = 3.5
+        XCTAssertEqual(fx.params["01"], 0.5)
+        XCTAssertEqual(fx.params["12"], 3.5)
+    }
+
+    func testFxStateCodableRoundTrip() throws {
+        var fx = FxState(index: 1, x32Name: "Reverb")
+        fx.algoType = "HALL"
+        fx.on = false
+        fx.mix = 0.4
+        fx.params["02"] = 2.4
+        let decoded = try JSONDecoder().decode(FxState.self, from: JSONEncoder().encode(fx))
+        XCTAssertEqual(decoded, fx)
+    }
+
     // MARK: - 电平表转换测试
 
     func testMeterToLevel() {

@@ -374,20 +374,23 @@ public final class X32Client: @unchecked Sendable, MixerWriting {
             return
         }
 
-        // FX config messages
-        if m.address.hasPrefix("/fx/") && m.address.hasSuffix("/name") {
+        // FX slot messages: /fx/<槽>/type | on | mix | par/<NN> | config/name
+        // ⚠️ 槽号不补零, 参数号补零 (/fx/1/par/01); type 回的是字符串。
+        //    algoType/on/mix 是 v1.6 效果库全量标定后新增的三个槽级字段 ——
+        //    没有它们, App 端连"这个槽装了什么算法"都不知道, 更别提按算法
+        //    渲染参数面板 (参数个数/量程全随算法变)。
+        if m.address.hasPrefix("/fx/") {
             let p = m.address.split(separator: "/"); guard p.count >= 3, let i = Int(p[1]) else { return }
             var f = state.fxs["fx/\(i)"] ?? FxState(index: i)
-            if case .string(let s) = v { f.x32Name = s }
-            updateState { $0.fxs["fx/\(i)"] = f }
-            return
-        }
-
-        // FX param messages
-        if m.address.contains("/par/") {
-            let p = m.address.split(separator: "/"); guard p.count >= 4, let i = Int(p[1]) else { return }
-            var f = state.fxs["fx/\(i)"] ?? FxState(index: i)
-            if let n = number { f.params[String(p[3])] = n }
+            if p.count == 3 {
+                if p[2] == "type", case .string(let s) = v { f.algoType = s }
+                else if p[2] == "on", let n = number { f.on = n != 0 }
+                else if p[2] == "mix", let n = number { f.mix = n }
+            } else if p.count == 4, p[2] == "par", let n = number {
+                f.params[String(p[3])] = n
+            } else if p.count == 4, p[2] == "config", p[3] == "name", case .string(let s) = v {
+                f.x32Name = s
+            }
             updateState { $0.fxs["fx/\(i)"] = f }
             return
         }
