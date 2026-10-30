@@ -65,10 +65,14 @@ public enum OscAddressParser {
         }
 
         // /auxin|usb|fxret|mtx/NN/mix/<fader|on>
-        if segs.count == 4, auxGroups.contains(segs[0]), segs[2] == "mix" {
+        // ⚠️ fxrtn 是真台拼写 (Maillot: FX Return 组)，解析归一到 fxret kind
+        //    (内部组名不变，卡片配置存的是 kind)。不收它，桥接的回声抑制会把
+        //    真台面板上每一个 FX 返送推子动作都误判成"外部变化"。
+        if segs.count == 4, (auxGroups.contains(segs[0]) || segs[0] == "fxrtn"), segs[2] == "mix" {
             guard let idx = Int(stripLR(segs[1])) else { return nil }
-            if segs[3] == "fader" { return Target(kind: "\(segs[0])_fader", idx: idx) }
-            if segs[3] == "on" { return Target(kind: "\(segs[0])_on", idx: idx) }
+            let grp = segs[0] == "fxrtn" ? "fxret" : segs[0]
+            if segs[3] == "fader" { return Target(kind: "\(grp)_fader", idx: idx) }
+            if segs[3] == "on" { return Target(kind: "\(grp)_on", idx: idx) }
             return nil
         }
 

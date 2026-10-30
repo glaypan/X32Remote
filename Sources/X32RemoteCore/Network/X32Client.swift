@@ -230,7 +230,9 @@ public final class X32Client: @unchecked Sendable, MixerWriting {
         }
         // AuxIn / USB / FX Return / Matrix —— 卡片的 fade_all 与 rel_db 会驱动这些分组，
         // 虚拟台面必须先把它们的当前值读回来，否则渐变起点会从 0 开始。
-        for (group, n) in [("auxin", 6), ("usb", 2), ("fxret", 8), ("mtx", 6)] {
+        // ⚠️ FX 返回组真台拼写是 fxrtn (槽号两位补零)；fxret 是旧拼写，
+        //    模拟器两个都收（回复一律落 fxrtn），这里发真台拼写。
+        for (group, n) in [("auxin", 6), ("usb", 2), ("fxrtn", 8), ("mtx", 6)] {
             for i in 1...n {
                 let p = "/\(group)/\(String(format: "%02d", i))"
                 for s in ["/mix/fader", "/mix/on", "/config/name"] {
@@ -238,12 +240,9 @@ public final class X32Client: @unchecked Sendable, MixerWriting {
                 }
             }
         }
-        for i in 1...4 {
+        // FX 机架槽名 (8 个槽全问; 推子/静音已由上面的 fxrtn 组循环覆盖)
+        for i in 1...8 {
             send(OscMessage(address: "/fx/\(i)/config/name"), source: .sync)
-            let r = "/rtn/fx/\(i)"
-            for s in ["/mix/fader", "/mix/on"] {
-                send(OscMessage(address: r + s), source: .sync)
-            }
         }
     }
 
@@ -365,12 +364,28 @@ public final class X32Client: @unchecked Sendable, MixerWriting {
         }
 
         // FX return messages
-        if m.address.hasPrefix("/rtn/fx/") {
+        // ⚠️ 真台拼写 fxrtn (/fxrtn/01/mix/fader)；旧客户端/旧模拟器可能回
+        //    fxret 甚至早年臆造的 rtn/fx —— 三种拼写都收，内部状态同一份。
+        //    一条回包要喂**两个状态轨**:
+        //      state.fxs["fx/N"]           效果器槽页的推子/静音显示
+        //      state.fxRets["fxret/NN"]    卡片 fade_all/rel_db 的渐变起点
+        //    （早年只喂其中一条，另一条默默停在默认值）
+        if m.address.hasPrefix("/fxrtn/") || m.address.hasPrefix("/fxret/")
+            || m.address.hasPrefix("/rtn/fx/") {
             let p = m.address.split(separator: "/"); guard p.count >= 4, let i = Int(p[2]) else { return }
-            var f = state.fxs["fx/\(i)"] ?? FxState(index: i)
+            let fkey = "fx/\(i)"
+            var f = state.fxs[fkey] ?? FxState(index: i)
             if m.address.hasSuffix("/fader"), let n = number { f.fader = n }
             if m.address.hasSuffix("/on"), let n = number { f.mute = n == 0 }
-            updateState { $0.fxs["fx/\(i)"] = f }
+            let akey = "fxret/\(String(format: "%02d", i))"
+            var a = auxState(group: "fxret", key: akey, index: i)
+            if m.address.hasSuffix("/fader"), let n = number { a.fader = n }
+            if m.address.hasSuffix("/on"), let n = number { a.mute = n == 0 }
+            if p.last == "name", case .string(let s) = v { a.x32Name = s }
+            updateState { st in
+                st.fxs[fkey] = f
+                st.fxRets[akey] = a
+            }
             return
         }
 

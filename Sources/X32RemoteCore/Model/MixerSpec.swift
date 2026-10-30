@@ -130,7 +130,9 @@ public enum MixerSpec {
         case "dca":   return String(format: "/dca/%02d/config/name", idx)
         case "auxin": return String(format: "/auxin/%02d/config/name", idx)
         case "usb":   return String(format: "/usb/%02d/config/name", idx)
-        case "fxret": return String(format: "/fxret/%02d/config/name", idx)
+        // ⚠️ FX 返回名真台拼写 fxrtn (Maillot: /fxrtn/[01..08]/config/name);
+        //    入参 group 仍叫 fxret (内部组名), 地址发 fxrtn。
+        case "fxret": return String(format: "/fxrtn/%02d/config/name", idx)
         case "mtx":   return String(format: "/mtx/%02d/config/name", idx)
         case "main":  return "/main/st/config/name"
         default:      return nil
@@ -144,7 +146,9 @@ public enum MixerSpec {
         case "dca_fader":   return dcaFader(idx)
         case "auxin_fader": return String(format: "/auxin/%02d/mix/fader", idx)
         case "usb_fader":   return String(format: "/usb/%02d/mix/fader", idx)
-        case "fxret_fader": return String(format: "/fxret/%02d/mix/fader", idx)
+        // ⚠️ FX 返回组真台拼写是 fxrtn (Maillot: /fxrtn/[01..08]/mix/fader);
+        //    kind 名保持 fxret_fader 不变 (卡片配置里存的是 kind, 改名炸存档)。
+        case "fxret_fader": return String(format: "/fxrtn/%02d/mix/fader", idx)
         case "mtx_fader":   return String(format: "/mtx/%02d/mix/fader", idx)
         case "main_fader":  return "/main/st/mix/fader"   // 无占位符
         default:            return nil
@@ -158,7 +162,7 @@ public enum MixerSpec {
         case "dca_on":   return dcaOn(idx)
         case "auxin_on": return String(format: "/auxin/%02d/mix/on", idx)
         case "usb_on":   return String(format: "/usb/%02d/mix/on", idx)
-        case "fxret_on": return String(format: "/fxret/%02d/mix/on", idx)
+        case "fxret_on": return String(format: "/fxrtn/%02d/mix/on", idx)
         case "mtx_on":   return String(format: "/mtx/%02d/mix/on", idx)
         case "main_on":  return "/main/st/mix/on"         // 无占位符
         default:         return nil

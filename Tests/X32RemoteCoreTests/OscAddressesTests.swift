@@ -225,12 +225,17 @@ final class OscAddressesTests: XCTestCase {
     }
 
     func testFxFaderAddress() {
-        XCTAssertEqual(OscAddresses.fxFader(1), "/rtn/fx/1/mix/fader")
-        XCTAssertEqual(OscAddresses.fxFader(4), "/rtn/fx/4/mix/fader")
+        // ⚠️ 真台拼写 fxrtn + 槽号两位补零 (Maillot: /fxrtn/[01..08]/mix/fader)。
+        //    早年断言的是臆造的 /rtn/fx/<n>/ —— 对真台和模拟器双哑,
+        //    推子显示一直是默认值, 属于"测试掩护 bug"的典型。
+        XCTAssertEqual(OscAddresses.fxFader(1), "/fxrtn/01/mix/fader")
+        XCTAssertEqual(OscAddresses.fxFader(4), "/fxrtn/04/mix/fader")
+        XCTAssertEqual(OscAddresses.fxFader(8), "/fxrtn/08/mix/fader")
     }
 
     func testFxMuteAddress() {
-        XCTAssertEqual(OscAddresses.fxMute(1), "/rtn/fx/1/mix/on")
+        XCTAssertEqual(OscAddresses.fxMute(1), "/fxrtn/01/mix/on")
+        XCTAssertEqual(OscAddresses.fxMute(8), "/fxrtn/08/mix/on")
     }
 
     func testFxParamAddress() {

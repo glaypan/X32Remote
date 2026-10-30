@@ -773,6 +773,26 @@ final class MixerTableTests: XCTestCase {
         XCTAssertEqual(MixerSpec.sceneLoad(2), "/scene/2/load")
     }
 
+    /// FX 返回组真台拼写 fxrtn: 写入地址、解析归一、往返闭环。
+    /// (早年臆造的 /rtn/fx/<n>/ 对真台双哑, 推子显示一直是默认值)
+    func testFxReturnAddressIsFxrtn() {
+        XCTAssertEqual(MixerSpec.faderAddress(kind: "fxret_fader", idx: 8), "/fxrtn/08/mix/fader")
+        XCTAssertEqual(MixerSpec.onAddress(kind: "fxret_on", idx: 1), "/fxrtn/01/mix/on")
+        XCTAssertEqual(MixerSpec.nameAddress(group: "fxret", idx: 3), "/fxrtn/03/config/name")
+        // 解析端把 fxrtn 归一到 fxret kind (内部组名, 卡片配置存的是 kind)
+        XCTAssertEqual(OscAddressParser.parse("/fxrtn/08/mix/fader")?.kind, "fxret_fader")
+        XCTAssertEqual(OscAddressParser.parse("/fxrtn/08/mix/fader")?.idx, 8)
+        XCTAssertEqual(OscAddressParser.parse("/fxrtn/01L/mix/on")?.kind, "fxret_on")
+        // 旧拼写也认 (老模拟器/老固件)
+        XCTAssertEqual(OscAddressParser.parse("/fxret/02/mix/fader")?.kind, "fxret_fader")
+        // 往返: kind → 地址 → kind
+        for idx in [1, 4, 8] {
+            let a = MixerSpec.address(kind: "fxret_fader", idx: idx) ?? ""
+            XCTAssertEqual(OscAddressParser.parse(a)?.kind, "fxret_fader", a)
+            XCTAssertEqual(OscAddressParser.parse(a)?.idx, idx, a)
+        }
+    }
+
     func testRealDeskGrpDcaFormIsAccepted() {
         // 真机固件也有 /ch/NN/grp/dca 写法，解析端必须兼容
         let parsed = OscAddressParser.parse("/ch/07/grp/dca")

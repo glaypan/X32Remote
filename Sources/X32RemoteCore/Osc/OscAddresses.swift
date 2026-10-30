@@ -215,13 +215,17 @@ public enum OscAddresses {
     }
 
     /// 生成 FX 返回推子地址
+    /// ⚠️ 真台组名是 **fxrtn** 且槽号两位补零 (Maillot 协议原文:
+    ///    /fxrtn/[01...08]/mix/fader, "FX Return (/fxrtn) data" 章)。
+    ///    早年这里写的是 /rtn/fx/<n>/ —— 臆造地址, 对真台和模拟器双哑
+    ///    (模拟器只认 fxrtn/fxret), 推子显示一直是默认值。
     public static func fxFader(_ fx: Int) -> String {
-        return String(format: "/rtn/fx/%d/mix/fader", fx)
+        return String(format: "/fxrtn/%02d/mix/fader", fx)
     }
 
-    /// 生成 FX 返回静音地址
+    /// 生成 FX 返回静音地址 (与 fxFader 同真台拼写)
     public static func fxMute(_ fx: Int) -> String {
-        return String(format: "/rtn/fx/%d/mix/on", fx)
+        return String(format: "/fxrtn/%02d/mix/on", fx)
     }
 
     /// 生成 FX 参数地址
