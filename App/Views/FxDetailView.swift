@@ -110,7 +110,9 @@ struct FxDetailView: View {
 
                 Toggle(isOn: Binding(
                     get: { fx.isOn },
-                    set: { appModel.setFxOn(fxId, on: $0) }
+                    // setFxOn 是 @MainActor (它改 @Published 状态), 而 Binding 的 set
+                    // 闭包不是主线程隔离上下文 —— 同步调用编译不过, 跳到 MainActor 再改
+                    set: { v in Task { @MainActor in appModel.setFxOn(fxId, on: v) } }
                 )) {
                     Label("启用效果", systemImage: "power")
                         .foregroundColor(fx.isOn ? .primary : .secondary)
@@ -129,7 +131,7 @@ struct FxDetailView: View {
                     Slider(
                         value: Binding(
                             get: { fx.mix },
-                            set: { appModel.setFxMix(fxId, mix: $0) }
+                            set: { v in Task { @MainActor in appModel.setFxMix(fxId, mix: v) } }
                         ),
                         in: 0...1
                     )
@@ -333,8 +335,10 @@ private struct AlgoPickerSheet: View {
         let allowed = FxCalibrationStore.shared?.slotAllows(fxId, name) ?? false
         return HStack {
             Button {
-                appModel.setFxType(fxId, algo: name)
-                dismiss()
+                Task { @MainActor in
+                    appModel.setFxType(fxId, algo: name)
+                    dismiss()
+                }
             } label: {
                 HStack {
                     VStack(alignment: .leading, spacing: 2) {

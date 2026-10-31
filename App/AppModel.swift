@@ -519,7 +519,7 @@ final class AppModel {
         //    会报 "expected ',' separator" —— 只有真机/CI 的 App 层编译能抓到
         //    (本机只能跑 Core 的 SPM 测试, 编不到 SwiftUI 这一层)
         client?.send(OscMessage(address: OscAddresses.fxParam(fxId, pnum),
-                                args: [spec.isEnum ? .int(Int(v.rounded())) : .float(Float(v))]))
+                                args: [spec.isEnum ? .int(Int32(v.rounded())) : .float(Float(v))]))
     }
 
     // MARK: - Channel Detail Query
