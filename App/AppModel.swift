@@ -515,8 +515,11 @@ final class AppModel {
         guard let pnum = lib.fieldToPar(algo, field),
               let spec = lib.algo(algo)?.params.first(where: { $0.p == pnum }) else { return }
         let v = spec.clamp(value)
+        // ⚠️ args 是数组: 三元表达式整体要包方括号, 写成 args: a ? .int() : .float()
+        //    会报 "expected ',' separator" —— 只有真机/CI 的 App 层编译能抓到
+        //    (本机只能跑 Core 的 SPM 测试, 编不到 SwiftUI 这一层)
         client?.send(OscMessage(address: OscAddresses.fxParam(fxId, pnum),
-                                args: spec.isEnum ? .int(Int(v.rounded())) : .float(Float(v))]))
+                                args: [spec.isEnum ? .int(Int(v.rounded())) : .float(Float(v))]))
     }
 
     // MARK: - Channel Detail Query
