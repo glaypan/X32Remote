@@ -13,6 +13,10 @@ final class AppModel {
     var buses: [BusUI] = []
     var fxProcessors: [FxUI] = []
 
+    /// 通道处理参数的当前值（键 `"ch/01/trim"`，见 `RemoteState.paramKey`）。
+    /// 详情页从这里取值；元数据（量程/枚举/页签）来自 `ParamTable`（随包内嵌的登记表）。
+    var paramValues: [String: Double] = [:]
+
     /// 演出卡片库（与服务端同一份 JSON 格式，可互相导入导出）
     var showCards: [TimelineCard] = []
     /// 卡片执行进度
@@ -321,6 +325,8 @@ final class AppModel {
     @MainActor
     private func syncState(from client: X32Client) {
         let remoteState = client.state
+        // 处理参数整体换一份（值不多，6 组全量也就几百项）
+        if paramValues != remoteState.params { paramValues = remoteState.params }
 
         let sortedKeys = remoteState.channels.keys.sorted()
         channels = sortedKeys.compactMap { key in
@@ -338,6 +344,17 @@ final class AppModel {
                                       isMuted: main.mute,
                                       meterLevel: 0))
         }
+
+        // 按组的推子/静音快照（Bus/Aux/FX 返回/Matrix 详情页与列表共用）
+        var lv: [String: Float] = [:]
+        var mu: [String: Bool] = [:]
+        for (k, c) in remoteState.channels { lv[k] = Float(c.fader); mu[k] = c.mute }
+        for (k, b) in remoteState.buses { lv[k] = Float(b.fader); mu[k] = b.mute }
+        for (k, a) in remoteState.auxins { lv[k] = Float(a.fader); mu[k] = a.mute }
+        for (k, a) in remoteState.fxRets { lv[k] = Float(a.fader); mu[k] = a.mute }
+        for (k, a) in remoteState.mtxs { lv[k] = Float(a.fader); mu[k] = a.mute }
+        if lv != groupLevels { groupLevels = lv }
+        if mu != groupMutes { groupMutes = mu }
 
         let dcaDict = remoteState.dcaStatesWithMembers()
         let sortedDcaKeys = dcaDict.keys.sorted()
@@ -520,6 +537,97 @@ final class AppModel {
         //    (本机只能跑 Core 的 SPM 测试, 编不到 SwiftUI 这一层)
         client?.send(OscMessage(address: OscAddresses.fxParam(fxId, pnum),
                                 args: [spec.isEnum ? .int(Int32(v.rounded())) : .float(Float(v))]))
+    }
+
+    // MARK: - 通用推子 / 静音（任何通道类型）
+
+    /// 各组的推子与静音快照（键 `"bus/03"`）。通道页用的是 `channels`，
+    /// 这里再存一份"按组"的，是为了让 Bus / Aux / FX 返回 / Matrix 详情页
+    /// 不必各自加一套数组 —— 加一个组就多一个键，不用改结构体。
+    var groupLevels: [String: Float] = [:]
+    var groupMutes: [String: Bool] = [:]
+
+    private func groupKey(_ group: String, _ idx: Int) -> String {
+        group == "main" ? "main/st" : String(format: "%@/%02d", group, idx)
+    }
+
+    func faderValue(group: String, idx: Int) -> Float {
+        groupLevels[groupKey(group, idx)] ?? 0.75
+    }
+
+    func isMutedValue(group: String, idx: Int) -> Bool {
+        groupMutes[groupKey(group, idx)] ?? false
+    }
+
+    func setFader(group: String, idx: Int, level: Float) {
+        let v = min(max(level, 0), 1)
+        groupLevels[groupKey(group, idx)] = v
+        guard let caps = ParamTable.caps(group) else { return }
+        let addr = caps.itemPrefix(idx) + "/mix/fader"
+        client?.send(OscMessage(address: addr, args: [.float(v)]))
+        // 通道页与 Bus 页读的是各自的数组，同步一下，避免两个页面显示不一致
+        if group == "ch", let i = channels.firstIndex(where: { $0.id == idx }) {
+            channels[i].level = v
+        } else if group == "main",
+                  let i = channels.firstIndex(where: { $0.id == Self.mainChannelId }) {
+            channels[i].level = v
+        } else if group == "bus", let i = buses.firstIndex(where: { $0.id == idx }) {
+            buses[i].level = v
+        }
+    }
+
+    func setMute(group: String, idx: Int, muted: Bool) {
+        groupMutes[groupKey(group, idx)] = muted
+        guard let caps = ParamTable.caps(group) else { return }
+        let addr = caps.itemPrefix(idx) + "/mix/on"
+        client?.send(OscMessage(address: addr, args: [.int(muted ? 0 : 1)]))
+        if group == "ch", let i = channels.firstIndex(where: { $0.id == idx }) {
+            channels[i].isMuted = muted
+        } else if group == "main",
+                  let i = channels.firstIndex(where: { $0.id == Self.mainChannelId }) {
+            channels[i].isMuted = muted
+        } else if group == "bus", let i = buses.firstIndex(where: { $0.id == idx }) {
+            buses[i].isMuted = muted
+        }
+    }
+
+    // MARK: - 通道处理参数（表驱动，覆盖全部通道类型）
+
+    /// 打开详情页时问一遍该通道的全部处理参数（数量随通道类型变：
+    /// ch 57 / bus 47 / main 44 / auxin 20 / mtx 45 / fxret 1，外加发送）
+    func queryParams(group: String, idx: Int) {
+        client?.queryParams(group: group, idx: idx)
+        if ParamTable.caps(group)?.hasSend == true {
+            client?.querySends(group: group, src: idx)
+        }
+    }
+
+    /// 当前值；没读到就用登记表的出厂值（界面不会出现空控件）
+    func paramValue(group: String, idx: Int, _ row: ParamRow) -> Double {
+        paramValues[RemoteState.paramKey(group, idx, row.field)] ?? row.defaultValue
+    }
+
+    /// 写一个处理参数（类型转换在 ParamRow.wireArgument 里，枚举下标不会发错）
+    func setParam(group: String, idx: Int, row: ParamRow, value: Double) {
+        client?.setParam(group: group, idx: idx, row: row, value: value)
+        // 本地立刻跟手 —— 不等真台回读（回读会再覆盖一次，值一样不会闪）
+        paramValues[RemoteState.paramKey(group, idx, row.field)] = row.clamp(value)
+    }
+
+    func sendValue(group: String, src: Int, bus: Int, field: String) -> Double? {
+        paramValues[ParamTable.sendKey(group: group, src: src, bus: bus, field: field)]
+    }
+
+    func setSendParam(group: String, src: Int, bus: Int, field: String, value: Double) {
+        client?.setSend(group: group, src: src, bus: bus, field: field, value: value)
+        let v = field == "tap" ? min(max(value.rounded(), 0), 4)
+                               : (field == "on" ? (value != 0 ? 1 : 0) : min(max(value, 0), 1))
+        paramValues[ParamTable.sendKey(group: group, src: src, bus: bus, field: field)] = v
+    }
+
+    /// 该通道类型的发送目标数（0 = 没有发送）
+    func sendTargetCount(group: String) -> Int {
+        ParamTable.caps(group)?.send ?? 0
     }
 
     // MARK: - Channel Detail Query

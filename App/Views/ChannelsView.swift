@@ -9,8 +9,10 @@ struct ChannelsView: View {
                 let channelId = channel.id
                 Group {
                     if channelId == AppModel.mainChannelId {
-                        // Main LR 没有通道详情页,只提供推子控制
-                        row(for: channel, channelId: channelId)
+                        // Main LR 也有均衡/压缩/插入/声像/发送 —— 现在能进详情页了
+                        NavigationLink(destination: ChannelDetailView(channelId: 1, group: "main", idx: 1)) {
+                            row(for: channel, channelId: channelId)
+                        }
                     } else {
                         NavigationLink(destination: ChannelDetailView(channelId: channelId)) {
                             row(for: channel, channelId: channelId)

@@ -32,6 +32,13 @@ public struct RemoteState: Codable, Equatable, Sendable {
     public var usbs: [String: AuxState] = [:]
     public var fxRets: [String: AuxState] = [:]
     public var mtxs: [String: AuxState] = [:]
+    /// 通道处理参数的通用取回表：键 `"ch/01/trim"` / `"bus/03/eq2_g"` / `"main/01/pan"`。
+    ///
+    /// 为什么不塞进 ChannelState: 各组能力不同（Bus 6 段 EQ、FX 返回连 EQ 都没有），
+    /// 每加一个参数就要加一个字段，而且 App 端得跟着改结构体。这里用"分组/路号/字段"
+    /// 三元组做键，配合 ParamTable 的地址反查，任何新参数**零改动**就能显示与调节。
+    /// 键里的 idx 对 main 固定写 01（内部编号从 1 起，与 OSC 地址一致）。
+    public var params: [String: Double] = [:]
 
     public init(channels: [String: ChannelState] = [:],
                 dcas: [String: DcaState] = [:],
@@ -40,7 +47,8 @@ public struct RemoteState: Codable, Equatable, Sendable {
                 auxins: [String: AuxState] = [:],
                 usbs: [String: AuxState] = [:],
                 fxRets: [String: AuxState] = [:],
-                mtxs: [String: AuxState] = [:]) {
+                mtxs: [String: AuxState] = [:],
+                params: [String: Double] = [:]) {
         self.channels = channels
         self.dcas = dcas
         self.buses = buses
@@ -49,6 +57,16 @@ public struct RemoteState: Codable, Equatable, Sendable {
         self.usbs = usbs
         self.fxRets = fxRets
         self.mtxs = mtxs
+        self.params = params
+    }
+
+    /// 参数键（统一入口，避免各处手拼字符串拼错）
+    public static func paramKey(_ group: String, _ idx: Int, _ field: String) -> String {
+        String(format: "%@/%02d/%@", group, idx, field)
+    }
+
+    public func param(_ group: String, _ idx: Int, _ field: String) -> Double? {
+        params[RemoteState.paramKey(group, idx, field)]
     }
 
     public func dcaStatesWithMembers() -> [String: DcaState] { var result = dcas.mapValues { var d=$0; d.memberKeys=[]; return d }; for (key, channel) in channels { guard let mask=channel.dcaMask else { continue }; for i in 1...8 where mask & (1 << (i-1)) != 0 { let k="dca/\(String(format: "%02d",i))"; var d=result[k] ?? DcaState(index:i); d.memberKeys.append(key); result[k]=d } }; return result } }

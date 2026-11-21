@@ -246,6 +246,61 @@ public final class X32Client: @unchecked Sendable, MixerWriting {
         }
     }
 
+    // MARK: - 通道处理参数（表驱动）
+
+    /// 按登记表把一个通道的**全部处理参数**问一遍。
+    ///
+    /// 数量由表决定：ch 57 项、bus 47 项、main 44 项、auxin 20 项、fxret 1 项（只有声像）、
+    /// mtx 45 项。都是无参数查询，真台逐条回值。
+    public func queryParams(group: String, idx: Int) {
+        for row in ParamTable.rows(group) {
+            send(OscMessage(address: row.address(idx: idx)))
+        }
+    }
+
+    /// 一个通道当前已读到的参数值（缺的用出厂值兜底，界面不会出现空控件）
+    public func paramValue(group: String, idx: Int, row: ParamRow) -> Double {
+        state.param(group, idx, row.field) ?? row.defaultValue
+    }
+
+    /// 写一个参数。本地先落值让界面立刻跟手，真台回读会再覆盖一次。
+    ///
+    /// 写值类型由 `ParamRow.wireArgument` 决定（bool→int / 枚举下标→int / 其它→float），
+    /// 这一步不能省：`dyn_ratio` 发 4.0 会被真台当成第 4 档（5:1）。
+    public func setParam(group: String, idx: Int, row: ParamRow, value: Double) {
+        let v = row.clamp(value)
+        updateState { $0.params[RemoteState.paramKey(group, idx, row.field)] = v }
+        send(OscMessage(address: row.address(idx: idx), args: [row.wireArgument(v)]))
+    }
+
+    /// 问一组发送（源一路 × 全部目标）的 level/on/tap。
+    /// 目标数按组不同：ch/auxin/fxret → 16，bus/main → 6。
+    public func querySends(group: String, src: Int) {
+        guard let caps = ParamTable.caps(group), caps.hasSend else { return }
+        for bus in 1...caps.send {
+            for f in (caps.hasTap ? ["level", "on", "tap"] : ["level", "on"]) {
+                if let a = ParamTable.sendAddress(group: group, src: src, bus: bus, field: f) {
+                    send(OscMessage(address: a))
+                }
+            }
+        }
+    }
+
+    public func sendValue(group: String, src: Int, bus: Int, field: String) -> Double? {
+        state.params[ParamTable.sendKey(group: group, src: src, bus: bus, field: field)]
+    }
+
+    public func setSend(group: String, src: Int, bus: Int, field: String, value: Double) {
+        guard let a = ParamTable.sendAddress(group: group, src: src, bus: bus, field: field) else { return }
+        let isInt = field == "on" || field == "tap"
+        let v = field == "tap" ? min(max(value.rounded(), 0), 4)
+                               : (field == "on" ? (value != 0 ? 1 : 0) : min(max(value, 0), 1))
+        updateState {
+            $0.params[ParamTable.sendKey(group: group, src: src, bus: bus, field: field)] = v
+        }
+        send(OscMessage(address: a, args: [isInt ? .int(Int32(v)) : .float(Float(v))]))
+    }
+
     // MARK: - 轻量探测 (自动发现)
 
     /// 向指定主机发送单条 /xinfo,等待回复。
@@ -339,6 +394,20 @@ public final class X32Client: @unchecked Sendable, MixerWriting {
                 }
             }
             return
+        }
+
+        // 通道处理参数（EQ/门/压缩/插入/增益/声像…）—— 走**表驱动**的通用通道。
+        // 以前这里是逐组手写 if（/eq/、/lc/、/comp/），只覆盖 ch 组的前几个参数，
+        // 而且 /lc/、/comp/ 这两个地址真台根本不存在（真台是 preamp/hpon 与 dyn/*），
+        // 于是低切与压缩那一块永远读不到值。现在地址表由登记表生成，
+        // 任何组、任何新参数都自动落进 state.params。
+        if let hit = ParamTable.parse(address: m.address), let n = number {
+            let key = RemoteState.paramKey(hit.group, hit.idx, hit.field)
+            updateState { $0.params[key] = n }
+        }
+        // 发送（二维目标）单独一张反查表：地址形状 /<组>/<源>/mix/<目标>/level
+        if let sendKey = ParamTable.parseSend(address: m.address), let n = number {
+            updateState { $0.params[sendKey] = n }
         }
 
         // DCA messages

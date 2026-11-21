@@ -9,6 +9,11 @@ struct RootTabView: View {
                 .tabItem {
                     Label("通道", systemImage: "slider.horizontal.3")
                 }
+
+            MixBusesView()
+                .tabItem {
+                    Label("总线", systemImage: "rectangle.split.3x1")
+                }
             
             DcaView()
                 .tabItem {

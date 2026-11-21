@@ -1,4 +1,11 @@
 import Foundation
+// Windows/Linux 的 Foundation 把 URLSession 拆到 FoundationNetworking；
+// Apple 平台没有这个模块，所以必须用 canImport 包一层。
+// （不加这一段，无 Mac 环境的 tools/local_verify.sh 会在这一步误报
+//  "cannot find 'URLRequest' in scope"，与本文件逻辑无关。）
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 
 /// 自动增益 / 自动推子：电脑端服务的 HTTP 客户端（`/api/rider`）。
 ///
