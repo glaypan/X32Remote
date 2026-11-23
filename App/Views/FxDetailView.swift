@@ -17,6 +17,8 @@ struct FxDetailView: View {
                 // Header: fader + mute
                 headerSection
                 Divider()
+                // 真机面板图 (v1.8): 台面上长这样, 认旋钮位置对得上
+                panelSection
                 // 槽级三件套: 算法 / 开关 / 混合比 (v1.6 起真台支持)
                 engineSection
                 Divider()
@@ -35,6 +37,28 @@ struct FxDetailView: View {
     }
 
     // MARK: - Header
+
+    /// 真机面板截图：只有已知算法才有图，空槽/未知算法不占位。
+    @ViewBuilder
+    private var panelSection: some View {
+        if let fx = fx, let img = FxGallery.shared.image(x32Code: fx.algoType) {
+            VStack(alignment: .leading, spacing: 6) {
+                Image(uiImage: img)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(maxWidth: .infinity)
+                    .background(Color.black.opacity(0.35))
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                if let item = FxGallery.shared.item(x32Code: fx.algoType) {
+                    Text("真机面板 · \(item.title)" + (item.n.map { " · \($0) 参数" } ?? ""))
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                }
+            }
+            .padding(.horizontal)
+            .padding(.vertical, 10)
+        }
+    }
 
     private var headerSection: some View {
         VStack(spacing: 12) {

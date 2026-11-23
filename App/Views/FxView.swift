@@ -2,33 +2,57 @@ import SwiftUI
 
 struct FxView: View {
     @Environment(AppModel.self) private var appModel
+    @State private var showGallery = false
 
     var body: some View {
         NavigationStack {
             List(Array(appModel.fxProcessors.enumerated()), id: \.element.id) { _, fx in
                 NavigationLink(destination: FxDetailView(fxId: fx.id)) {
-                    HStack(spacing: 12) {
-                        VStack(alignment: .leading, spacing: 4) {
-                            HStack(spacing: 6) {
-                                Text(fx.label)
-                                    .font(.headline)
-                                // 算法开关小圆点: 绿 = 启用, 灰 = 关闭 (v1.6 起真台有 /fx/<n>/on)
-                                Circle()
-                                    .fill(fx.isOn ? Color.green : Color(.systemGray3))
-                                    .frame(width: 8, height: 8)
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack(spacing: 12) {
+                            VStack(alignment: .leading, spacing: 4) {
+                                HStack(spacing: 6) {
+                                    Text(fx.label)
+                                        .font(.headline)
+                                    // 算法开关小圆点: 绿 = 启用, 灰 = 关闭 (v1.6 起真台有 /fx/<n>/on)
+                                    Circle()
+                                        .fill(fx.isOn ? Color.green : Color(.systemGray3))
+                                        .frame(width: 8, height: 8)
+                                }
+                                Text(rowSubtitle(fx))
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
                             }
-                            Text(rowSubtitle(fx))
-                                .font(.caption)
-                                .foregroundColor(.secondary)
+                            Spacer()
+                            FaderPreview(level: fx.level, isMuted: fx.isMuted)
+                                .frame(width: 60, height: 40)
                         }
-                        Spacer()
-                        FaderPreview(level: fx.level, isMuted: fx.isMuted)
-                            .frame(width: 60, height: 40)
+                        // 真机面板缩略图 (v1.8): 认算法靠它, 不是自绘示意
+                        if let img = FxGallery.shared.image(x32Code: fx.algoType) {
+                            Image(uiImage: img)
+                                .resizable()
+                                .scaledToFit()
+                                .frame(maxWidth: .infinity)
+                                .clipShape(RoundedRectangle(cornerRadius: 8))
+                        }
                     }
                 }
                 .buttonStyle(.plain)
             }
             .navigationTitle("效果器")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        showGallery = true
+                    } label: {
+                        Image(systemName: "photo.on.rectangle.angled")
+                    }
+                    .accessibilityLabel("效果器图鉴")
+                }
+            }
+            .sheet(isPresented: $showGallery) {
+                FxGalleryView()
+            }
         }
     }
 
