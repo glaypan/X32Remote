@@ -603,7 +603,7 @@ final class AppModel {
     }
 
     /// 当前值；没读到就用登记表的出厂值（界面不会出现空控件）
-    func paramValue(group: String, idx: Int, _ row: ParamRow) -> Double {
+    func paramValue(group: String, idx: Int, row: ParamRow) -> Double {
         paramValues[RemoteState.paramKey(group, idx, row.field)] ?? row.defaultValue
     }
 

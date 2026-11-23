@@ -108,29 +108,34 @@ struct ChannelDetailView: View {
 
     // MARK: - 页签条
 
+    // 页签条 + 分隔线。两个视图必须包在容器里：
+    // `some View` 计算属性只对**单个**表达式做隐式返回，直接写两句会报
+    // "function declares an opaque return type, but has no return statements"。
     private var tabBar: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 6) {
-                ForEach(tabs) { t in
-                    Button {
-                        tab = t.id
-                    } label: {
-                        Text(t.label)
-                            .font(.subheadline)
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 6)
-                            .background(tab == t.id ? Color.accentColor : Color(.secondarySystemFill))
-                            .foregroundColor(tab == t.id ? .white : .primary)
-                            .clipShape(Capsule())
+        VStack(spacing: 0) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    ForEach(tabs) { t in
+                        Button {
+                            tab = t.id
+                        } label: {
+                            Text(t.label)
+                                .font(.subheadline)
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 6)
+                                .background(tab == t.id ? Color.accentColor : Color(.secondarySystemFill))
+                                .foregroundColor(tab == t.id ? .white : .primary)
+                                .clipShape(Capsule())
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
                 }
+                .padding(.horizontal)
+                .padding(.vertical, 8)
             }
-            .padding(.horizontal)
-            .padding(.vertical, 8)
+            .background(Color(.systemGroupedBackground))
+            Divider()
         }
-        .background(Color(.systemGroupedBackground))
-        Divider()
     }
 
     // MARK: - 处理参数
