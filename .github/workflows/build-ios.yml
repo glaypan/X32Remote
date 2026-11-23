@@ -15,7 +15,8 @@ on:
 jobs:
   build:
     name: Build & Package IPA
-    runs-on: macos-14          # Apple Silicon runner，构建最快
+    runs-on: macos-15          # Apple Silicon runner。macos-14 已退役：
+                               # 作业会在 1 秒内被取消且不留日志（本次踩过）
 
     steps:
       - name: Checkout
