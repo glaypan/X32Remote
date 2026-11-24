@@ -886,8 +886,16 @@ struct FxUI: Identifiable {
         guard let t = algoType else { return nil }
         return FxCalibrationStore.shared?.algo(t)
     }
-    /// 算法中文名 (未知算法时回落真台枚举名)
-    var algoLabel: String { algoSpec?.label ?? algoType ?? "未装载" }
+    /// 算法名 —— 优先真台写法 (X32-Edit / 固件 FX 页上的英文名)。
+    /// 用户是照着台子找效果器的；给中文等于让他自己翻译。
+    /// 未知算法回落真台枚举名。
+    var algoLabel: String { algoSpec?.en ?? algoSpec?.label ?? algoType ?? "未装载" }
+    /// 中文辅助名 (与真台名相同时返回空, 界面上就不重复显示)
+    var algoZh: String {
+        guard let spec = algoSpec else { return "" }
+        let zh = spec.label, en = spec.en ?? spec.label
+        return zh == en ? "" : zh
+    }
     /// 参数个数 (按标定表; 没有标定就按已读到的 params 数)
     var paramCount: Int { algoSpec?.n ?? params.count }
 }

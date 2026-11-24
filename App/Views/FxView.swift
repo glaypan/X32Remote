@@ -56,12 +56,13 @@ struct FxView: View {
         }
     }
 
-    /// 副标题: 算法中文名 + 参数个数。未装载/未知算法各有说法。
+    /// 副标题: 真台算法名 + 中文辅助 + 参数个数。未装载/未知算法各有说法。
     private func rowSubtitle(_ fx: FxUI) -> String {
         guard fx.algoType != nil else {
             return fx.params.isEmpty ? "未装载" : "未知算法 · \(fx.params.count) 参数"
         }
-        var s = fx.algoLabel
+        var s = fx.algoLabel                    // 真台英文名 (Stereo Chorus)
+        if !fx.algoZh.isEmpty { s += " · " + fx.algoZh }   // 中文辅助
         if fx.paramCount > 0 { s += " · \(fx.paramCount) 参数" }
         if !fx.isOn { s += " · 已关闭" }
         return s

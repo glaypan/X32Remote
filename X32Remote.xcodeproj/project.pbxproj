@@ -368,7 +368,7 @@ A200000F0000000000000001 /* RiderView.swift */ = {isa = PBXFileReference; lastKn
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 8;
+				CURRENT_PROJECT_VERSION = 9;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -385,7 +385,7 @@ A200000F0000000000000001 /* RiderView.swift */ = {isa = PBXFileReference; lastKn
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.6.0;
+				MARKETING_VERSION = 1.7.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.example.X32Remote;
 				PRODUCT_NAME = "X32 Remote";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
@@ -403,7 +403,7 @@ A200000F0000000000000001 /* RiderView.swift */ = {isa = PBXFileReference; lastKn
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 8;
+				CURRENT_PROJECT_VERSION = 9;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -420,7 +420,7 @@ A200000F0000000000000001 /* RiderView.swift */ = {isa = PBXFileReference; lastKn
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.6.0;
+				MARKETING_VERSION = 1.7.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.example.X32Remote;
 				PRODUCT_NAME = "X32 Remote";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";

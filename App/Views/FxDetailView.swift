@@ -110,6 +110,15 @@ struct FxDetailView: View {
 
     // MARK: - 算法 / 开关 / 混合比
 
+    /// 算法副行: 中文辅助名 · 枚举代码 · 槽位限制。
+    /// 抽成函数而不是写在 ViewBuilder 里 —— 局部 let 在结果构建器里能用但容易
+    /// 碰上类型推断的边界, 这里没必要冒险。
+    private func algoSubLine(_ fx: FxUI, _ code: String) -> String {
+        let zh = fx.algoZh
+        let head = zh.isEmpty ? code : zh + " · " + code
+        return head + (fx.algoSpec?.heavy == true ? " · 仅 FX 1-4" : "")
+    }
+
     private var engineSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             sectionHeader(title: "效果算法", systemImage: "slider.horizontal.3")
@@ -121,7 +130,9 @@ struct FxDetailView: View {
                         Text(fx.algoLabel)
                             .font(.subheadline.bold())
                         if let t = fx.algoType {
-                            Text(t + (fx.algoSpec?.heavy == true ? " · 仅 FX 1-4" : ""))
+                            // 第二行: 中文辅助名 · 枚举代码 · 槽位限制。
+                            // 枚举代码是真台地址里用的那个 (HALL/CRS/GEQ2), 排障时对日志用得上。
+                            Text(algoSubLine(fx, t))
                                 .font(.caption.monospacedDigit())
                                 .foregroundColor(.secondary)
                         }
@@ -366,10 +377,12 @@ private struct AlgoPickerSheet: View {
             } label: {
                 HStack {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(spec?.label ?? name)
+                        // 真台名当标题 (用户在台子上看到的就是这个)
+                        Text(spec?.en ?? spec?.label ?? name)
                             .font(.body)
                             .foregroundColor(allowed ? .primary : .secondary)
-                        Text(name + (spec?.heavy == true ? " · 仅 FX 1-4" : ""))
+                        // 第二行: 中文辅助 + 枚举代码 + 槽位限制
+                        Text(algoRowSubtitle(spec, name))
                             .font(.caption.monospacedDigit())
                             .foregroundColor(.secondary)
                     }
@@ -384,6 +397,16 @@ private struct AlgoPickerSheet: View {
             .buttonStyle(.plain)
             .disabled(!allowed)
         }
+    }
+
+    /// 选择列表的副行: 中文辅助名 · 枚举代码 · 槽位限制（真台名已在第一行）
+    private func algoRowSubtitle(_ spec: FxAlgoSpec?, _ name: String) -> String {
+        let en = spec?.en ?? spec?.label ?? name
+        let zh: String = {
+            guard let z = spec?.label, z != en else { return "" }
+            return z + " · "
+        }()
+        return zh + name + (spec?.heavy == true ? " · 仅 FX 1-4" : "")
     }
 }
 

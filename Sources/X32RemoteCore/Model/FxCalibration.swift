@@ -40,6 +40,7 @@ public struct FxParamSpec: Codable, Equatable, Sendable {
 /// 一种效果算法的标定 (61 种之一)
 public struct FxAlgoSpec: Codable, Equatable, Sendable {
     public let label: String       // 中文名
+    public let en: String?         // 真台显示名 (X32-Edit / 固件 FX 页上的写法, 如 "Stereo Chorus")
     public let cat: String         // 分类 (reverb/delay/combo/mod/pitch/eq/dyn/enh/amp)
     public let heavy: Bool         // true = 仅 FX 1-4 (真台 DSP 限制)
     public let n: Int              // 参数个数
