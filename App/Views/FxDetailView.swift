@@ -7,8 +7,19 @@ struct FxDetailView: View {
 
     @State private var showAlgoPicker = false
 
+    /// 电脑端服务的 HTTP 端口 —— 与自动增益面板共用同一个设置项
+    /// （`rider_port` 就是配对码里的"网页端口"，不是 OSC 的 10023）
+    @AppStorage("rider_port") private var webPort: Int = 8080
+
+    /// 当前控台的参数可写性表；拉不到就保持 `.unrestricted`（全部可写）
+    @State private var caps: FxParamCaps = .unrestricted
+
     private var fx: FxUI? {
         appModel.fxProcessors.first(where: { $0.id == fxId })
+    }
+
+    private var consoleLabel: String {
+        caps.console.isEmpty ? "当前控台" : caps.console.uppercased()
     }
 
     var body: some View {
@@ -33,6 +44,32 @@ struct FxDetailView: View {
         }
         .onAppear {
             appModel.queryFxDetail(fxId)
+        }
+        .task(id: appModel.mixerIP) {
+            await loadCaps()
+        }
+    }
+
+    // MARK: - 参数可写性
+
+    /// 拉一次 `/api/fxcaps`，决定哪些参数要置灰。
+    ///
+    /// 为什么 App 要单独拉：网页端每个参数在 `/api/state` 里自带 `w` 字段，
+    /// 但 App 走 OSC 直连，从来没有消费过那份 HTTP 状态流。
+    ///
+    /// 失败（连的是真台 X32 / 服务没开 / 端口关着）→ 一律落到"全可写"。
+    /// 这里**显式赋回** `.unrestricted`（而不是留着上一次的值）：从 WING 切到 X32 时，
+    /// 旧灰表会让本来能调的参数莫名其妙变灰。
+    private func loadCaps() async {
+        let host = appModel.mixerIP
+        guard !host.isEmpty else {
+            caps = .unrestricted
+            return
+        }
+        do {
+            caps = try await FxParamCapsAPI.fetch(host: host, port: webPort)
+        } catch {
+            caps = .unrestricted
         }
     }
 
@@ -194,6 +231,13 @@ struct FxDetailView: View {
                     ForEach(spec.params, id: \.p) { pspec in
                         paramRow(fx: fx, spec: pspec)
                     }
+                    let blocked = caps.blockedCount(slot: fxId, pars: spec.params.map { $0.p })
+                    if blocked > 0 {
+                        Text("其中 \(blocked) 项在 \(consoleLabel) 上没有地址，已置灰（只读）")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                            .padding(.top, 2)
+                    }
                 }
             } else if let fx = fx, !fx.params.isEmpty {
                 // 真台上装了本库没有的算法: 没有标定, 只能给通用 0-1 滑杆
@@ -227,10 +271,13 @@ struct FxDetailView: View {
         let key = String(format: "%02d", spec.p)
         let raw = fx.params[key]
         let valueText = raw.map { spec.display($0) } ?? "未设置"
+        // 当前控台没有这个参数的地址（WING 的段类型 / 门模型 / 侧链等）→ 只读置灰。
+        // 留一个能拖的假滑杆比不给更糟：拖了没反应，用户以为台子坏了。
+        let off = !caps.allows(slot: fxId, par: spec.p)
 
         return VStack(alignment: .leading, spacing: 2) {
             HStack {
-                Text(spec.label)
+                Text(off ? "\(spec.label)（本控台未标定）" : spec.label)
                     .font(.caption)
                     .foregroundColor(.secondary)
                 Spacer()
@@ -269,6 +316,9 @@ struct FxDetailView: View {
                 .padding(.horizontal, 4)
             }
         }
+        // 与网页 .fxrow 的 "opacity:.55" 同款：两端截图能对上
+        .disabled(off)
+        .opacity(off ? 0.55 : 1)
         .padding(.vertical, 4)
     }
 
